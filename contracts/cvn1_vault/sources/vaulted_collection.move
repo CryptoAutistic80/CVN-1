@@ -15,7 +15,7 @@ module cvn1_vault::vaulted_collection {
     use cedra_framework::event;
     
     use cedra_token_objects::collection::{Self, Collection};
-    use cedra_token_objects::token::{Self, Token};
+    use cedra_token_objects::token::{Self, Token, BurnRef};
     
     use cedra_std::math64;
     use cedra_std::smart_table::{Self, SmartTable};
@@ -59,11 +59,17 @@ module cvn1_vault::vaulted_collection {
         collection_addr: address,
         /// Creator royalty in basis points (10000 = 100%)
         creator_royalty_bps: u16,
-        /// Vault top-up royalty in basis points
+        /// Vault top-up royalty in basis points (from secondary sales)
         vault_royalty_bps: u16,
-        /// Allowed FA types (empty = any FA allowed)
+        /// Percentage of mint fee to seed into vault (0-10000 = 0-100%)
+        mint_vault_bps: u16,
+        /// Mint price in smallest units (0 = free mint)
+        mint_price: u64,
+        /// FA metadata address for mint payments (only needed if mint_price > 0)
+        mint_price_fa: address,
+        /// Allowed FA types for deposits (empty = any FA allowed)
         allowed_assets: vector<address>,
-        /// Address to receive creator royalty payments
+        /// Address to receive creator payments
         creator_payout_addr: address,
     }
 
@@ -78,6 +84,8 @@ module cvn1_vault::vaulted_collection {
         extend_ref: ExtendRef,
         /// Reference for cleanup on burn+redeem
         delete_ref: DeleteRef,
+        /// Reference for burning the token
+        burn_ref: BurnRef,
         /// Address of the collection creator (for config lookup)
         creator_addr: address,
         /// Track if last sale used vault royalty
@@ -127,6 +135,11 @@ module cvn1_vault::vaulted_collection {
     // ============================================
 
     /// Initialize a new vaulted NFT collection with configuration
+    /// 
+    /// # Arguments
+    /// * `mint_vault_bps` - Percentage of mint fee to seed into vault (0-10000)
+    /// * `mint_price` - Price per mint in smallest FA units (0 = free)
+    /// * `mint_price_fa` - FA metadata address for payments (use @0x0 if free)
     public entry fun init_collection_config(
         creator: &signer,
         collection_name: String,
@@ -134,16 +147,22 @@ module cvn1_vault::vaulted_collection {
         collection_uri: String,
         creator_royalty_bps: u16,
         vault_royalty_bps: u16,
+        mint_vault_bps: u16,
+        mint_price: u64,
+        mint_price_fa: address,
         allowed_assets: vector<address>,
         creator_payout_addr: address
     ) {
         let creator_addr = signer::address_of(creator);
         
-        // Validate royalty basis points
+        // Validate royalty basis points (for secondary sales)
         assert!(
             (creator_royalty_bps as u64) + (vault_royalty_bps as u64) <= MAX_BPS,
             EINVALID_ROYALTY_BPS
         );
+        
+        // Validate mint vault bps
+        assert!((mint_vault_bps as u64) <= MAX_BPS, EINVALID_ROYALTY_BPS);
         
         // Validate no existing collection config
         assert!(!exists<VaultedCollectionConfig>(creator_addr), ECOLLECTION_ALREADY_EXISTS);
@@ -153,7 +172,7 @@ module cvn1_vault::vaulted_collection {
             creator,
             collection_description,
             collection_name,
-            option::none(), // No royalty struct for now
+            option::none(),
             collection_uri,
         );
         
@@ -165,35 +184,52 @@ module cvn1_vault::vaulted_collection {
             collection_addr,
             creator_royalty_bps,
             vault_royalty_bps,
+            mint_vault_bps,
+            mint_price,
+            mint_price_fa,
             allowed_assets,
             creator_payout_addr,
         });
     }
 
-    /// Mint a new vaulted NFT
-    public entry fun mint_vaulted_nft(
+
+    
+    /// Creator mints a vaulted NFT, optionally charging a fee from buyer
+    /// 
+    /// This is the primary mint function. The creator mints, a portion of
+    /// the mint fee goes directly into the vault.
+    public entry fun creator_mint_vaulted_nft(
         creator: &signer,
+        buyer: &signer,
         to: address,
         name: String,
         description: String,
         uri: String,
         is_redeemable: bool
-    ) acquires VaultedCollectionConfig {
+    ) acquires VaultedCollectionConfig, VaultInfo {
         let creator_addr = signer::address_of(creator);
+        let _buyer_addr = signer::address_of(buyer);
         assert!(exists<VaultedCollectionConfig>(creator_addr), ECONFIG_NOT_FOUND);
         let config = borrow_global<VaultedCollectionConfig>(creator_addr);
         
-        // Get collection name from address
+        // Get collection info
         let collection_obj = object::address_to_object<Collection>(config.collection_addr);
         let collection_name = collection::name(collection_obj);
         
-        // Create the NFT with a named token
+        // Store config values
+        let mint_price = config.mint_price;
+        let mint_vault_bps = config.mint_vault_bps;
+        let mint_price_fa_addr = config.mint_price_fa;
+        let creator_payout = config.creator_payout_addr;
+        let collection_addr_copy = config.collection_addr;
+        
+        // Create the NFT
         let constructor_ref = token::create_named_token(
             creator,
             collection_name,
             description,
             name,
-            option::none(), // No royalty
+            option::none(),
             uri,
         );
         
@@ -203,6 +239,7 @@ module cvn1_vault::vaulted_collection {
         // Create refs for vault lifecycle management
         let extend_ref = object::generate_extend_ref(&constructor_ref);
         let delete_ref = object::generate_delete_ref(&constructor_ref);
+        let burn_ref = token::generate_burn_ref(&constructor_ref);
         
         // Initialize VaultInfo under the NFT address
         move_to(&token_signer, VaultInfo {
@@ -210,9 +247,36 @@ module cvn1_vault::vaulted_collection {
             vault_stores: smart_table::new(),
             extend_ref,
             delete_ref,
+            burn_ref,
             creator_addr,
             last_sale_compliant: false,
         });
+        
+        // Handle mint payment if price > 0
+        if (mint_price > 0 && mint_price_fa_addr != @0x0) {
+            let fa_metadata = object::address_to_object<Metadata>(mint_price_fa_addr);
+            
+            // Calculate split
+            let vault_seed = math64::mul_div(mint_price, (mint_vault_bps as u64), MAX_BPS);
+            let creator_cut = mint_price - vault_seed;
+            
+            // Withdraw from buyer
+            let payment = primary_fungible_store::withdraw(buyer, fa_metadata, mint_price);
+            
+            // Pay creator
+            if (creator_cut > 0) {
+                let creator_payment = fungible_asset::extract(&mut payment, creator_cut);
+                primary_fungible_store::deposit(creator_payout, creator_payment);
+            };
+            
+            // Seed vault with remainder
+            if (vault_seed > 0) {
+                // Deposit directly into the new NFT's vault
+                deposit_fa_to_vault(nft_addr, fa_metadata, payment);
+            } else {
+                fungible_asset::destroy_zero(payment);
+            };
+        };
         
         // Transfer NFT to recipient
         let token_obj = object::object_from_constructor_ref<Token>(&constructor_ref);
@@ -221,7 +285,7 @@ module cvn1_vault::vaulted_collection {
         // Emit minted event
         event::emit(VaultedNFTMinted {
             nft_object_addr: nft_addr,
-            collection_addr: config.collection_addr,
+            collection_addr: collection_addr_copy,
             creator: creator_addr,
             recipient: to,
             is_redeemable,
@@ -297,40 +361,53 @@ module cvn1_vault::vaulted_collection {
         // Verify ownership
         assert!(object::owner(nft_object) == owner_addr, ENOT_OWNER);
         
-        // Get vault info
+        // Get vault info - verify exists and is redeemable before moving
         assert!(exists<VaultInfo>(nft_addr), EVAULT_NOT_FOUND);
-        let vault_info = borrow_global_mut<VaultInfo>(nft_addr);
         
-        // Verify redeemable
-        assert!(vault_info.is_redeemable, ENOT_REDEEMABLE);
+        // Check redeemable using borrow first
+        {
+            let vault_info_ref = borrow_global<VaultInfo>(nft_addr);
+            assert!(vault_info_ref.is_redeemable, ENOT_REDEEMABLE);
+        };
+        
+        // Move out VaultInfo to take ownership of all fields
+        let VaultInfo {
+            is_redeemable: _,
+            vault_stores,
+            extend_ref,
+            delete_ref: _,
+            burn_ref,
+            creator_addr: _,
+            last_sale_compliant: _,
+        } = move_from<VaultInfo>(nft_addr);
         
         // Get vault signer for withdrawals
-        let vault_signer = object::generate_signer_for_extending(&vault_info.extend_ref);
+        let vault_signer = object::generate_signer_for_extending(&extend_ref);
         
         // Collect all FA addresses for the event
         let redeemed_assets = vector::empty<address>();
         
         // Iterate all stores and withdraw to owner
-        // Note: SmartTable iteration requires knowing the keys
-        // We iterate by getting keys from the table
-        let keys = smart_table::keys(&vault_info.vault_stores);
+        let keys = smart_table::keys(&vault_stores);
         let i = 0;
         let len = vector::length(&keys);
         while (i < len) {
             let fa_addr = *vector::borrow(&keys, i);
-            let store_addr = *smart_table::borrow(&vault_info.vault_stores, fa_addr);
+            let store_addr = *smart_table::borrow(&vault_stores, fa_addr);
             let store = object::address_to_object<FungibleStore>(store_addr);
             
             // Get balance and withdraw if > 0
             let balance = fungible_asset::balance(store);
             if (balance > 0) {
-                let _fa_metadata = fungible_asset::store_metadata(store);
                 let fa = withdraw_from_store(&vault_signer, store, balance);
                 primary_fungible_store::deposit(owner_addr, fa);
                 vector::push_back(&mut redeemed_assets, fa_addr);
             };
             i = i + 1;
         };
+        
+        // Clean up the SmartTable
+        smart_table::destroy(vault_stores);
         
         // Emit redeem event
         event::emit(VaultRedeemed {
@@ -339,11 +416,8 @@ module cvn1_vault::vaulted_collection {
             assets_redeemed: redeemed_assets,
         });
         
-        // Note: In production, we would also:
-        // 1. Clean up the SmartTable
-        // 2. Delete the VaultInfo using delete_ref
-        // 3. Burn the token
-        // For now, the NFT remains but vault is emptied
+        // Burn the token using the owned burn_ref
+        token::burn(burn_ref);
     }
 
     /// Settle a sale with vault royalty
@@ -537,6 +611,10 @@ module cvn1_vault::vaulted_collection {
     #[test_only]
     use std::string::utf8;
 
+    // ----------------------------------------
+    // init_collection_config tests
+    // ----------------------------------------
+
     #[test(creator = @0x123)]
     fun test_init_collection_config(creator: &signer) acquires VaultedCollectionConfig {
         init_collection_config(
@@ -545,7 +623,10 @@ module cvn1_vault::vaulted_collection {
             utf8(b"A test collection for CVN-1"),
             utf8(b"https://example.com/collection.json"),
             250,  // 2.5% creator royalty
-            250,  // 2.5% vault royalty
+            250,  // 2.5% vault royalty  
+            5000, // 50% of mint goes to vault
+            0,    // free mint
+            @0x0, // no mint currency
             vector::empty(),
             @0x123
         );
@@ -568,8 +649,187 @@ module cvn1_vault::vaulted_collection {
             utf8(b"https://example.com"),
             6000,  // 60%
             5000,  // 50%
+            0,     // mint vault %
+            0,     // price
+            @0x0,  // currency
             vector::empty(),
             @0x123
         );
     }
+
+    #[test(creator = @0x123)]
+    #[expected_failure(abort_code = ECOLLECTION_ALREADY_EXISTS)]
+    fun test_duplicate_collection_config(creator: &signer) {
+        // First creation should succeed
+        init_collection_config(
+            creator,
+            utf8(b"Test Collection"),
+            utf8(b"Description"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123
+        );
+        
+        // Second creation should fail
+        init_collection_config(
+            creator,
+            utf8(b"Another Collection"),
+            utf8(b"Description"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123
+        );
+    }
+
+    #[test(creator = @0x123)]
+    fun test_max_royalty_bps(creator: &signer) acquires VaultedCollectionConfig {
+        // 100% total should be allowed
+        init_collection_config(
+            creator,
+            utf8(b"Max Royalty Collection"),
+            utf8(b"Description"),
+            utf8(b"https://example.com"),
+            5000,  // 50%
+            5000,  // 50%
+            10000, // 100% of mint to vault
+            0, @0x0,
+            vector::empty(),
+            @0x123
+        );
+        
+        let (creator_bps, vault_bps, _, _) = get_vault_config(@0x123);
+        assert!(creator_bps == 5000, 0);
+        assert!(vault_bps == 5000, 1);
+    }
+
+    #[test(creator = @0x123)]
+    fun test_collection_with_allowed_assets(creator: &signer) acquires VaultedCollectionConfig {
+        let allowed = vector[@0xA, @0xB, @0xC];
+        init_collection_config(
+            creator,
+            utf8(b"Restricted Assets Collection"),
+            utf8(b"Description"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            allowed,
+            @0x123
+        );
+        
+        let (_, _, assets, _) = get_vault_config(@0x123);
+        assert!(vector::length(&assets) == 3, 0);
+        assert!(vector::contains(&assets, &@0xA), 1);
+    }
+
+    // ----------------------------------------
+    // vault_exists tests
+    // ----------------------------------------
+
+    #[test]
+    fun test_vault_exists_false_for_nonexistent() {
+        assert!(!vault_exists(@0x999), 0);
+    }
+
+    // ----------------------------------------
+    // get_vault_config tests
+    // ----------------------------------------
+
+    #[test]
+    #[expected_failure(abort_code = ECONFIG_NOT_FOUND)]
+    fun test_get_vault_config_not_found() acquires VaultedCollectionConfig {
+        let (_, _, _, _) = get_vault_config(@0x999);
+    }
+
+    // ----------------------------------------
+    // get_vault_balances tests
+    // ----------------------------------------
+
+    #[test]
+    fun test_get_vault_balances_nonexistent() acquires VaultInfo {
+        let balances = get_vault_balances(@0x999);
+        assert!(vector::is_empty(&balances), 0);
+    }
+
+    // ----------------------------------------
+    // last_sale_used_vault_royalty tests
+    // ----------------------------------------
+
+    #[test]
+    fun test_last_sale_compliance_nonexistent() acquires VaultInfo {
+        assert!(!last_sale_used_vault_royalty(@0x999), 0);
+    }
+
+    // ----------------------------------------
+    // get_vault_info tests
+    // ----------------------------------------
+
+    #[test]
+    #[expected_failure(abort_code = EVAULT_NOT_FOUND)]
+    fun test_get_vault_info_not_found() acquires VaultInfo {
+        let (_, _, _) = get_vault_info(@0x999);
+    }
+
+    // ----------------------------------------
+    // Zero royalty tests
+    // ----------------------------------------
+
+    #[test(creator = @0x123)]
+    fun test_zero_royalties(creator: &signer) acquires VaultedCollectionConfig {
+        init_collection_config(
+            creator,
+            utf8(b"Zero Royalty Collection"),
+            utf8(b"No royalties"),
+            utf8(b"https://example.com"),
+            0, 0, 0, 0, @0x0, // all zeros = no royalties, free mint
+            vector::empty(),
+            @0x123
+        );
+        
+        let (creator_bps, vault_bps, _, _) = get_vault_config(@0x123);
+        assert!(creator_bps == 0, 0);
+        assert!(vault_bps == 0, 1);
+    }
+
+    // ----------------------------------------
+    // Mint vault percentage tests
+    // ----------------------------------------
+
+    #[test(creator = @0x123)]
+    #[expected_failure(abort_code = EINVALID_ROYALTY_BPS)]
+    fun test_invalid_mint_vault_bps(creator: &signer) {
+        // Should fail: mint_vault_bps > 100%
+        init_collection_config(
+            creator,
+            utf8(b"Invalid Mint Vault"),
+            utf8(b"Description"),
+            utf8(b"https://example.com"),
+            250, 250,
+            10001, // 100.01% - invalid!
+            0, @0x0,
+            vector::empty(),
+            @0x123
+        );
+    }
+
+    #[test(creator = @0x123)]
+    fun test_full_mint_to_vault(creator: &signer) acquires VaultedCollectionConfig {
+        // 100% of mint fee to vault, 0% to creator
+        init_collection_config(
+            creator,
+            utf8(b"Full Vault Mint"),
+            utf8(b"All mint fees go to vault"),
+            utf8(b"https://example.com"),
+            250, 250,
+            10000, // 100% of mint to vault
+            1000000, // 1 unit price
+            @0xABC, // some FA address
+            vector::empty(),
+            @0x123
+        );
+        
+        let (_, _, _, _) = get_vault_config(@0x123);
+        // Config stored successfully
+    }
 }
+
