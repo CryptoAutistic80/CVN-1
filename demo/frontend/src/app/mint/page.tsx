@@ -10,27 +10,19 @@ const CVN1_ADDRESS = "0x87e87b2f6ca01a0a02d68e18305f700435fdb76e445db9d24c84a121
 const MODULE_NAME = "vaulted_collection";
 
 interface NFT {
-    address: string;
     name: string;
-    vaultBalance: number;
     txHash: string;
 }
 
 export default function MintPage() {
-    const { connected, signAndSubmitTransaction } = useWallet();
+    const { connected, account, signAndSubmitTransaction } = useWallet();
     const [minting, setMinting] = useState(false);
     const [mintedNFTs, setMintedNFTs] = useState<NFT[]>([]);
     const [error, setError] = useState<string | null>(null);
+    const [nftName, setNftName] = useState("My Vaulted NFT #1");
 
-    const strategies = [
-        { id: "premium", name: "Premium Art", icon: "🎨", vaultBps: 10000, price: 100 },
-        { id: "pfp", name: "PFP Collection", icon: "🚀", vaultBps: 5000, price: 50 },
-        { id: "piggy", name: "Piggy Bank", icon: "🏦", vaultBps: 0, price: 0 },
-        { id: "gaming", name: "Gaming Item", icon: "🎮", vaultBps: 8000, price: 100 },
-    ];
-
-    const handleMint = async (strategy: typeof strategies[0]) => {
-        if (!connected) {
+    const handleMint = async () => {
+        if (!connected || !account) {
             setError("Please connect your wallet first");
             return;
         }
@@ -40,28 +32,29 @@ export default function MintPage() {
 
         try {
             // Call creator_mint_vaulted_nft on the contract
+            // Contract signature: (creator, buyer, to, name, description, uri, is_redeemable)
+            // For frontend-only, user is both creator AND buyer, minting to themselves
             const result = await signAndSubmitTransaction({
                 data: {
                     function: `${CVN1_ADDRESS}::${MODULE_NAME}::creator_mint_vaulted_nft`,
                     typeArguments: [],
                     functionArguments: [
-                        `${strategy.name} #${mintedNFTs.length + 1}`, // name
-                        `Vaulted NFT from CVN-1 demo`,                 // description  
-                        `https://cvn1.demo/nft/${strategy.id}`,       // uri
-                        true,                                          // is_redeemable
+                        account.address?.toString() || "",  // to (recipient address)
+                        nftName,                            // name
+                        "Vaulted NFT from CVN-1 Playground", // description
+                        "https://cvn1.demo/nft/1",           // uri
+                        true,                                // is_redeemable
                     ],
                 },
             });
 
-            const vaultAmount = (strategy.price * strategy.vaultBps) / 10000;
             const newNFT: NFT = {
-                address: `0x${result.hash.slice(2, 18)}...`, // Truncated tx hash as placeholder
-                name: `${strategy.name} #${mintedNFTs.length + 1}`,
-                vaultBalance: vaultAmount,
+                name: nftName,
                 txHash: result.hash,
             };
 
             setMintedNFTs([newNFT, ...mintedNFTs]);
+            setNftName(`My Vaulted NFT #${mintedNFTs.length + 2}`);
         } catch (err) {
             console.error("Mint failed:", err);
             setError(err instanceof Error ? err.message : "Mint failed");
@@ -87,10 +80,10 @@ export default function MintPage() {
                 </div>
             </header>
 
-            <div className="max-w-5xl mx-auto px-6 py-12">
+            <div className="max-w-2xl mx-auto px-6 py-12">
                 <div className="text-center mb-10">
-                    <h1 className="text-3xl font-bold text-white mb-2">Test Minting</h1>
-                    <p className="text-gray-400">Choose a strategy and mint test NFTs to see vault seeding in action</p>
+                    <h1 className="text-3xl font-bold text-white mb-2">Mint NFT</h1>
+                    <p className="text-gray-400">Mint a vaulted NFT from your collection</p>
                 </div>
 
                 {/* Error Banner */}
@@ -103,60 +96,61 @@ export default function MintPage() {
                 {/* Connect Wallet Prompt */}
                 {!connected && (
                     <div className="mb-6 p-6 bg-purple-500/10 border border-purple-500/30 rounded-xl text-center">
-                        <p className="text-purple-300 mb-2">Connect your wallet to mint real NFTs on testnet</p>
-                        <p className="text-sm text-gray-400">Click the "Connect" button in the header</p>
+                        <p className="text-purple-300 mb-2">Connect your wallet to mint</p>
+                        <p className="text-sm text-gray-400">You must first create a collection at /create</p>
                     </div>
                 )}
 
-                {/* Strategy Grid */}
-                <div className="grid md:grid-cols-4 gap-4 mb-12">
-                    {strategies.map((strategy) => {
-                        const vaultAmount = (strategy.price * strategy.vaultBps) / 10000;
-                        return (
-                            <button
-                                key={strategy.id}
-                                onClick={() => handleMint(strategy)}
-                                disabled={minting}
-                                className="group bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 text-left hover:border-purple-500/50 transition-all disabled:opacity-50"
-                            >
-                                <span className="text-4xl block mb-3">{strategy.icon}</span>
-                                <h3 className="font-bold text-white">{strategy.name}</h3>
-                                <div className="text-sm text-gray-400 mt-2">
-                                    <div>Price: {strategy.price === 0 ? "FREE" : `${strategy.price} CEDRA`}</div>
-                                    <div className="text-purple-400">Vault: {vaultAmount} CEDRA</div>
-                                </div>
-                                <div className="mt-4 py-2 px-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-lg text-white text-sm text-center font-medium group-hover:opacity-90">
-                                    {minting ? "Minting..." : "Mint"}
-                                </div>
-                            </button>
-                        );
-                    })}
+                {/* Mint Form */}
+                <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-8 mb-8">
+                    <h2 className="text-lg font-semibold text-white mb-6">Mint from Your Collection</h2>
+
+                    <div className="mb-6">
+                        <label className="block text-sm text-gray-400 mb-2">NFT Name</label>
+                        <input
+                            type="text"
+                            value={nftName}
+                            onChange={(e) => setNftName(e.target.value)}
+                            className="w-full px-4 py-3 bg-gray-900/50 border border-gray-700 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                            placeholder="Enter NFT name"
+                        />
+                    </div>
+
+                    <button
+                        onClick={handleMint}
+                        disabled={minting || !connected}
+                        className="w-full py-4 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold text-lg hover:opacity-90 disabled:opacity-50 transition-opacity"
+                    >
+                        {minting ? "Minting..." : "🎨 Mint NFT"}
+                    </button>
+
+                    <p className="text-xs text-gray-500 text-center mt-4">
+                        This mints from the collection you created with your connected wallet
+                    </p>
                 </div>
 
                 {/* Minted NFTs */}
                 {mintedNFTs.length > 0 && (
                     <div>
-                        <h2 className="text-xl font-bold text-white mb-4">Minted NFTs</h2>
+                        <h2 className="text-xl font-bold text-white mb-4">✅ Minted NFTs</h2>
                         <div className="space-y-3">
                             {mintedNFTs.map((nft, i) => (
                                 <div
                                     key={i}
-                                    className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4 flex items-center justify-between"
+                                    className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-4"
                                 >
-                                    <div>
-                                        <div className="font-medium text-white">{nft.name}</div>
-                                        <div className="text-sm text-gray-400 font-mono">{nft.address}</div>
+                                    <div className="font-medium text-white mb-1">{nft.name}</div>
+                                    <div className="text-xs text-gray-500 font-mono break-all">
+                                        TX: {nft.txHash}
                                     </div>
-                                    <div className="text-right">
-                                        <div className="text-sm text-gray-400">Vault Balance</div>
-                                        <div className="font-bold text-purple-400">{nft.vaultBalance} CEDRA</div>
-                                    </div>
-                                    <Link
-                                        href={`/explore?nft=${nft.address}`}
-                                        className="ml-4 py-2 px-4 bg-gray-700 hover:bg-gray-600 rounded-lg text-white text-sm"
+                                    <a
+                                        href={`https://explorer.cedra.dev/txn/${nft.txHash}?network=testnet`}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-purple-400 text-sm hover:underline mt-2 inline-block"
                                     >
-                                        View →
-                                    </Link>
+                                        View on Explorer →
+                                    </a>
                                 </div>
                             ))}
                         </div>
