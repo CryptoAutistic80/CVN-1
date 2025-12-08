@@ -1,4 +1,7 @@
+"use client";
+
 import Link from "next/link";
+import { ConnectButton } from "@/components/ConnectButton";
 
 export default function Home() {
   return (
@@ -12,9 +15,7 @@ export default function Home() {
               CVN-1 Playground
             </h1>
           </div>
-          <div className="text-sm text-gray-400">
-            Cedra Vaulted NFT Standard
-          </div>
+          <ConnectButton />
         </div>
       </header>
 

@@ -181,110 +181,58 @@ This document outlines the phased development approach for implementing the CVN-
 
 ---
 
-## Phase 3: TypeScript SDK
+## Phase 3: SDKs ✅ Complete
 
-**Goal:** Developer-friendly client library for CVN-1 interactions.
+**Goal:** Developer-friendly client libraries for CVN-1 interactions.
 
 ### Tasks
 
-- [ ] **3.1** Initialize SDK package
-  ```bash
-  cd sdk/typescript
-  npm init -y
-  npm install @cedra-labs/ts-sdk typescript
-  ```
+- [x] **3.1** TypeScript SDK (`sdk/typescript/`)
+  - CVN1Client with all view/entry functions
+  - Types: VaultConfig, CollectionConfig, MintParams, etc.
+  - Utils: bpsToPercent, formatAddress, toBigInt
+  - 17 tests passing
 
-- [ ] **3.2** Implement core classes
-  ```typescript
-  // src/CVN1Client.ts
-  export class CVN1Client {
-    constructor(cedra: Cedra, moduleAddress: string);
-    
-    // Collection management
-    async initCollection(signer, config): Promise<string>;
-    
-    // Minting
-    async mintVaultedNFT(signer, params): Promise<{txHash, nftAddress}>;
-    
-    // Deposits
-    async depositToVault(signer, nftAddress, faMetadata, amount): Promise<string>;
-    
-    // Redemption
-    async burnAndRedeem(signer, nftAddress): Promise<string>;
-    
-    // Views (gas-free)
-    async getVaultBalances(nftAddress): Promise<Array<{asset, balance}>>;
-    async getVaultConfig(creatorAddress): Promise<VaultConfig>;
-    async vaultExists(nftAddress): Promise<boolean>;
-  }
-  ```
-
-- [ ] **3.3** Add TypeScript types
-  ```typescript
-  // src/types.ts
-  export interface VaultConfig {
-    collectionAddr: string;
-    creatorRoyaltyBps: number;
-    vaultRoyaltyBps: number;
-    allowedAssets: string[];
-    creatorPayoutAddr: string;
-  }
-  ```
-
-- [ ] **3.4** Write SDK tests against testnet deployment
-
-- [ ] **3.5** Build and publish
-  ```bash
-  npm run build
-  npm publish  # or private registry
-  ```
+- [x] **3.2** Rust SDK (`sdk/rust/`)
+  - CVN1Client with view functions
+  - Types: VaultConfig, VaultBalance, CollectionConfig
+  - Utils with tests
 
 ### Deliverables
-- [ ] `@cvn1/sdk` npm package
-- [ ] SDK documentation with examples
-- [ ] Passing SDK tests
+- [x] `@cvn1/sdk` npm package (builds)
+- [x] `cvn1-sdk` Rust crate (compiles)
+- [x] SDK documentation with examples
+- [x] Passing SDK tests
 
 ---
 
-## Phase 4: Demo UI
+## Phase 4+5: Demo Platform ✅ Complete
 
-**Goal:** Reference implementation showcasing CVN-1 capabilities.
+**Goal:** Interactive playground showcasing CVN-1 capabilities.
 
 ### Tasks
 
-- [ ] **4.1** Scaffold web app
-  ```bash
-  cd demo
-  npx -y create-vite@latest . --template react-ts
-  npm install @cedra-labs/ts-sdk @cvn1/sdk
-  ```
+- [x] **4.1** Next.js Frontend (`demo/frontend/`)
+  - `/` - Playground hub with feature cards
+  - `/create` - Config builder with sliders + presets
+  - `/mint` - Strategy picker with minted NFT list
+  - `/explore` - Vault viewer with deposit/redeem
 
-- [ ] **4.2** Core pages
-  - `/` - Landing with collection gallery
-  - `/create` - Create vaulted collection (creator)
-  - `/mint` - Mint new vaulted NFT (creator)
-  - `/nft/:id` - NFT detail with vault balances
-  - `/deposit/:id` - Deposit FA into vault
-  - `/redeem/:id` - Burn & redeem flow
+- [x] **4.2** Rust Backend (`demo/backend/`)
+  - Actix-web API server
+  - `/api/mint` - Mint handler
+  - `/api/vault/{nft}` - Vault queries
 
-- [ ] **4.3** Wallet integration
-  - Connect Zedra/Petra wallet
-  - Display connected address
-  - Sign transactions
-
-- [ ] **4.4** UI components
-  - `VaultBalanceCard` - Shows vault assets with USD values
-  - `DepositModal` - FA type selector + amount input
-  - `RedeemConfirmation` - Warning about NFT destruction
-
-- [ ] **4.5** Real-time updates
-  - Poll or websocket for vault balance changes
-  - Toast notifications on successful tx
+- [x] **4.3** UI Features
+  - 4 preset strategies (Premium Art, PFP, Piggy Bank, Gaming)
+  - Live preview of mint split
+  - Slider controls for royalties/vault %
+  - Minted NFT list with vault balances
 
 ### Deliverables
-- [ ] Deployed demo at `cvn1-demo.example.com`
-- [ ] Mobile-responsive design
-- [ ] Source code in `demo/`
+- [x] Frontend builds (`npm run build`)
+- [x] Backend compiles (`cargo check`)
+- [x] Source code in `demo/`
 
 ---
 

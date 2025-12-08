@@ -10,6 +10,9 @@
   },
   "dependencies": {
     "@cedra-labs/ts-sdk": "^2.2.8",
+    "@cedra-labs/wallet-adapter-core": "^5.5.5",
+    "@cedra-labs/wallet-adapter-plugin": "^2.4.7",
+    "@cedra-labs/wallet-standard": "^0.5.1",
     "next": "16.0.8",
     "react": "19.2.1",
     "react-dom": "19.2.1"

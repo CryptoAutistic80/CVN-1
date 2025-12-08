@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ConnectButton } from "@/components/ConnectButton";
 
 export default function ExplorePage() {
     const [nftAddress, setNftAddress] = useState("");
@@ -60,9 +61,10 @@ export default function ExplorePage() {
                         <span className="text-2xl">💎</span>
                         <span className="text-xl font-bold text-white">CVN-1 Playground</span>
                     </Link>
-                    <div className="flex gap-4">
+                    <div className="flex items-center gap-4">
                         <Link href="/create" className="text-gray-400 hover:text-white">Create</Link>
                         <Link href="/mint" className="text-gray-400 hover:text-white">Mint</Link>
+                        <ConnectButton />
                     </div>
                 </div>
             </header>
@@ -99,8 +101,8 @@ export default function ExplorePage() {
                             <div className="flex items-center justify-between mb-4">
                                 <h2 className="text-lg font-semibold text-white">Vault Status</h2>
                                 <span className={`px-3 py-1 rounded-full text-xs font-medium ${vaultData.isRedeemable
-                                        ? "bg-green-500/20 text-green-400"
-                                        : "bg-red-500/20 text-red-400"
+                                    ? "bg-green-500/20 text-green-400"
+                                    : "bg-red-500/20 text-red-400"
                                     }`}>
                                     {vaultData.isRedeemable ? "Redeemable" : "Locked"}
                                 </span>

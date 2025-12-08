@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ConnectButton } from "@/components/ConnectButton";
 
 interface NFT {
     address: string;
@@ -44,9 +45,10 @@ export default function MintPage() {
                         <span className="text-2xl">💎</span>
                         <span className="text-xl font-bold text-white">CVN-1 Playground</span>
                     </Link>
-                    <div className="flex gap-4">
+                    <div className="flex items-center gap-4">
                         <Link href="/create" className="text-gray-400 hover:text-white">Create</Link>
                         <Link href="/explore" className="text-gray-400 hover:text-white">Explore</Link>
+                        <ConnectButton />
                     </div>
                 </div>
             </header>

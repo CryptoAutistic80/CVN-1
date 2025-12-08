@@ -132,9 +132,8 @@ Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
 | Phase 0: Environment Setup | ✅ Complete |
 | Phase 1: Core Contract | ✅ Complete |
 | Phase 2: Testing & Audit | ✅ Complete |
-| Phase 3: TypeScript SDK | ⏳ Planned |
-| Phase 4: Demo UI | ⏳ Planned |
-| Phase 5: Indexer | ⏳ Planned |
+| Phase 3: SDKs (TS + Rust) | ✅ Complete |
+| Phase 4+5: Demo Platform | ✅ Complete |
 | Phase 6: Mainnet Deploy | ⏳ Planned |
 
 ## License

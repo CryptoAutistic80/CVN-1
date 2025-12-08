@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import Link from "next/link";
+import { ConnectButton } from "@/components/ConnectButton";
 
 interface CollectionConfig {
     name: string;
@@ -95,9 +96,10 @@ export default function CreatePage() {
                         <span className="text-2xl">💎</span>
                         <span className="text-xl font-bold text-white">CVN-1 Playground</span>
                     </Link>
-                    <div className="flex gap-4">
+                    <div className="flex items-center gap-4">
                         <Link href="/" className="text-gray-400 hover:text-white">Home</Link>
                         <Link href="/mint" className="text-gray-400 hover:text-white">Mint</Link>
+                        <ConnectButton />
                     </div>
                 </div>
             </header>
@@ -121,8 +123,8 @@ export default function CreatePage() {
                                             key={id}
                                             onClick={() => applyPreset(id)}
                                             className={`p-3 rounded-lg border text-sm transition-all ${selectedPreset === id
-                                                    ? "border-purple-500 bg-purple-500/20 text-white"
-                                                    : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600"
+                                                ? "border-purple-500 bg-purple-500/20 text-white"
+                                                : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600"
                                                 }`}
                                         >
                                             {id === "premium-art" && "🎨 "}
