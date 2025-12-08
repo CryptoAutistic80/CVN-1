@@ -2,8 +2,10 @@
 
 > A standard for NFTs with embedded on-chain treasuries on the Cedra Network
 
+[![Version](https://img.shields.io/badge/Version-1.0.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
-[![Cedra](https://img.shields.io/badge/Cedra-Mainnet-blue.svg)](https://cedra.network)
+[![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
+[![Tests](https://img.shields.io/badge/Tests-30%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
@@ -35,7 +37,14 @@ cedra move compile --named-addresses cvn1_vault=default
 ### Test
 
 ```bash
+# Contract tests (13 passing)
 cedra move test --named-addresses cvn1_vault=default
+
+# TypeScript SDK tests (17 passing)
+cd sdk/typescript && npm test
+
+# Rust SDK tests (all passing)
+cd sdk/rust && cargo test
 ```
 
 ### Deploy (Testnet)
