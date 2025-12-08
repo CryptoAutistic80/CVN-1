@@ -55,3 +55,8 @@ target/
 Cargo.lock
 *.rlib
 *.rmeta
+
+# Private keys
+newkey.txt
+newkey.txt.pub
+*.key

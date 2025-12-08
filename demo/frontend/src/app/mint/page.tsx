@@ -6,7 +6,7 @@ import { ConnectButton } from "@/components/ConnectButton";
 import { useWallet } from "@/components/wallet-provider";
 
 // CVN-1 Contract on testnet
-const CVN1_ADDRESS = "0x87e87b2f6ca01a0a02d68e18305f700435fdb76e445db9d24c84a121f2d5cd2c";
+const CVN1_ADDRESS = "0x921213f0f52998b002b7f2c4fcf2b7042dab9f1a5f44a36158ed6424afc25bb7";
 const MODULE_NAME = "vaulted_collection";
 
 interface NFT {
@@ -19,7 +19,8 @@ export default function MintPage() {
     const [minting, setMinting] = useState(false);
     const [mintedNFTs, setMintedNFTs] = useState<NFT[]>([]);
     const [error, setError] = useState<string | null>(null);
-    const [nftName, setNftName] = useState("My Vaulted NFT #1");
+    // Use timestamp to ensure unique names
+    const [nftName, setNftName] = useState(`Vaulted NFT ${Date.now().toString(36)}`);
 
     const handleMint = async () => {
         if (!connected || !account) {
@@ -31,16 +32,14 @@ export default function MintPage() {
         setError(null);
 
         try {
-            // Call creator_mint_vaulted_nft on the contract
-            // Contract signature: (creator, buyer, to, name, description, uri, is_redeemable)
-            // For frontend-only, user is both creator AND buyer, minting to themselves
+            // Call creator_self_mint - single signer, no payment
+            // Signature: (name, description, uri, is_redeemable)
             const result = await signAndSubmitTransaction({
                 data: {
-                    function: `${CVN1_ADDRESS}::${MODULE_NAME}::creator_mint_vaulted_nft`,
+                    function: `${CVN1_ADDRESS}::${MODULE_NAME}::creator_self_mint`,
                     typeArguments: [],
                     functionArguments: [
-                        account.address?.toString() || "",  // to (recipient address)
-                        nftName,                            // name
+                        nftName,                             // name
                         "Vaulted NFT from CVN-1 Playground", // description
                         "https://cvn1.demo/nft/1",           // uri
                         true,                                // is_redeemable
@@ -54,7 +53,8 @@ export default function MintPage() {
             };
 
             setMintedNFTs([newNFT, ...mintedNFTs]);
-            setNftName(`My Vaulted NFT #${mintedNFTs.length + 2}`);
+            // Generate new unique name for next mint
+            setNftName(`Vaulted NFT ${Date.now().toString(36)}`);
         } catch (err) {
             console.error("Mint failed:", err);
             setError(err instanceof Error ? err.message : "Mint failed");

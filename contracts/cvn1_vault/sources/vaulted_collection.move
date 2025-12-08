@@ -293,6 +293,69 @@ module cvn1_vault::vaulted_collection {
     }
 
     /// Deposit fungible assets into an NFT's vault
+    /// 
+    /// Creator mints a vaulted NFT to themselves (single signer, no payment)
+    /// 
+    /// This is a simplified mint function for demos where the creator
+    /// wants to mint NFTs to themselves without payment handling.
+    public entry fun creator_self_mint(
+        creator: &signer,
+        name: String,
+        description: String,
+        uri: String,
+        is_redeemable: bool
+    ) acquires VaultedCollectionConfig {
+        let creator_addr = signer::address_of(creator);
+        assert!(exists<VaultedCollectionConfig>(creator_addr), ECONFIG_NOT_FOUND);
+        let config = borrow_global<VaultedCollectionConfig>(creator_addr);
+        
+        // Get collection info
+        let collection_obj = object::address_to_object<Collection>(config.collection_addr);
+        let collection_name = collection::name(collection_obj);
+        let collection_addr_copy = config.collection_addr;
+        
+        // Create the NFT
+        let constructor_ref = token::create_named_token(
+            creator,
+            collection_name,
+            description,
+            name,
+            option::none(),
+            uri,
+        );
+        
+        let token_signer = object::generate_signer(&constructor_ref);
+        let nft_addr = object::address_from_constructor_ref(&constructor_ref);
+        
+        // Create refs for vault lifecycle management
+        let extend_ref = object::generate_extend_ref(&constructor_ref);
+        let delete_ref = object::generate_delete_ref(&constructor_ref);
+        let burn_ref = token::generate_burn_ref(&constructor_ref);
+        
+        // Initialize VaultInfo under the NFT address
+        move_to(&token_signer, VaultInfo {
+            is_redeemable,
+            vault_stores: smart_table::new(),
+            extend_ref,
+            delete_ref,
+            burn_ref,
+            creator_addr,
+            last_sale_compliant: false,
+        });
+        
+        // NFT stays with creator (no transfer needed)
+        
+        // Emit minted event
+        event::emit(VaultedNFTMinted {
+            nft_object_addr: nft_addr,
+            collection_addr: collection_addr_copy,
+            creator: creator_addr,
+            recipient: creator_addr,
+            is_redeemable,
+        });
+    }
+
+    /// Deposit fungible assets into an NFT's vault
     public entry fun deposit_to_vault(
         depositor: &signer,
         nft_object: Object<Token>,
