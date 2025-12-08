@@ -49,7 +49,7 @@ mod tests {
     #[test]
     fn test_format_address() {
         let addr = "0x87e87b2f6ca01a0a02d68e18305f700435fdb76e445db9d24c84a121f2d5cd2c";
-        assert_eq!(format_address(addr), "0x87e8...d2c");
+        assert_eq!(format_address(addr), "0x87e8...cd2c");
         assert_eq!(format_address("0x1234"), "0x1234");
     }
 }

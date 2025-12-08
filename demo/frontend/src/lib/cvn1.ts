@@ -1,0 +1,88 @@
+import { Cedra, CedraConfig, Network } from "@cedra-labs/ts-sdk";
+
+// CVN-1 Contract address on testnet
+export const CVN1_ADDRESS = "0x87e87b2f6ca01a0a02d68e18305f700435fdb76e445db9d24c84a121f2d5cd2c";
+export const MODULE_NAME = "vaulted_collection";
+
+// Initialize Cedra client for testnet
+const config = new CedraConfig({ network: Network.TESTNET });
+export const cedra = new Cedra(config);
+
+// Types
+export interface VaultConfig {
+    creatorRoyaltyBps: number;
+    vaultRoyaltyBps: number;
+    allowedAssets: string[];
+    creatorPayoutAddr: string;
+}
+
+export interface VaultBalance {
+    faMetadataAddr: string;
+    balance: bigint;
+}
+
+// View functions (gas-free)
+export async function vaultExists(nftAddr: string): Promise<boolean> {
+    try {
+        const result = await cedra.view({
+            payload: {
+                function: `${CVN1_ADDRESS}::${MODULE_NAME}::vault_exists`,
+                typeArguments: [],
+                functionArguments: [nftAddr],
+            },
+        });
+        return result[0] as boolean;
+    } catch {
+        return false;
+    }
+}
+
+export async function getVaultConfig(creatorAddr: string): Promise<VaultConfig | null> {
+    try {
+        const result = await cedra.view({
+            payload: {
+                function: `${CVN1_ADDRESS}::${MODULE_NAME}::get_vault_config`,
+                typeArguments: [],
+                functionArguments: [creatorAddr],
+            },
+        });
+        return {
+            creatorRoyaltyBps: Number(result[0]),
+            vaultRoyaltyBps: Number(result[1]),
+            allowedAssets: result[2] as string[],
+            creatorPayoutAddr: result[3] as string,
+        };
+    } catch {
+        return null;
+    }
+}
+
+export async function getVaultBalances(nftAddr: string): Promise<VaultBalance[]> {
+    try {
+        const result = await cedra.view({
+            payload: {
+                function: `${CVN1_ADDRESS}::${MODULE_NAME}::get_vault_balances`,
+                typeArguments: [],
+                functionArguments: [nftAddr],
+            },
+        });
+
+        const balances = result[0] as Array<{ fa_metadata_addr: string; balance: string }>;
+        return balances.map(b => ({
+            faMetadataAddr: b.fa_metadata_addr,
+            balance: BigInt(b.balance),
+        }));
+    } catch {
+        return [];
+    }
+}
+
+// Helper functions
+export function bpsToPercent(bps: number): number {
+    return bps / 100;
+}
+
+export function formatAddress(address: string): string {
+    if (address.length <= 12) return address;
+    return `${address.slice(0, 6)}...${address.slice(-4)}`;
+}

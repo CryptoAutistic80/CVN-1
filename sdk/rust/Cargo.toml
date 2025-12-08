@@ -20,7 +20,3 @@ merlin = { git = "https://github.com/cedra-labs/merlin" }
 
 [dev-dependencies]
 tokio-test = "0.4"
-
-[[example]]
-name = "basic"
-path = "examples/basic.rs"
