@@ -3,16 +3,24 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
+import { useWallet } from "@/components/wallet-provider";
+
+// CVN-1 Contract on testnet
+const CVN1_ADDRESS = "0x87e87b2f6ca01a0a02d68e18305f700435fdb76e445db9d24c84a121f2d5cd2c";
+const MODULE_NAME = "vaulted_collection";
 
 interface NFT {
     address: string;
     name: string;
     vaultBalance: number;
+    txHash: string;
 }
 
 export default function MintPage() {
+    const { connected, signAndSubmitTransaction } = useWallet();
     const [minting, setMinting] = useState(false);
     const [mintedNFTs, setMintedNFTs] = useState<NFT[]>([]);
+    const [error, setError] = useState<string | null>(null);
 
     const strategies = [
         { id: "premium", name: "Premium Art", icon: "🎨", vaultBps: 10000, price: 100 },
@@ -22,18 +30,44 @@ export default function MintPage() {
     ];
 
     const handleMint = async (strategy: typeof strategies[0]) => {
+        if (!connected) {
+            setError("Please connect your wallet first");
+            return;
+        }
+
         setMinting(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
+        setError(null);
 
-        const vaultAmount = (strategy.price * strategy.vaultBps) / 10000;
-        const newNFT: NFT = {
-            address: `0x${Math.random().toString(16).slice(2, 18)}`,
-            name: `${strategy.name} #${mintedNFTs.length + 1}`,
-            vaultBalance: vaultAmount,
-        };
+        try {
+            // Call creator_mint_vaulted_nft on the contract
+            const result = await signAndSubmitTransaction({
+                data: {
+                    function: `${CVN1_ADDRESS}::${MODULE_NAME}::creator_mint_vaulted_nft`,
+                    typeArguments: [],
+                    functionArguments: [
+                        `${strategy.name} #${mintedNFTs.length + 1}`, // name
+                        `Vaulted NFT from CVN-1 demo`,                 // description  
+                        `https://cvn1.demo/nft/${strategy.id}`,       // uri
+                        true,                                          // is_redeemable
+                    ],
+                },
+            });
 
-        setMintedNFTs([newNFT, ...mintedNFTs]);
-        setMinting(false);
+            const vaultAmount = (strategy.price * strategy.vaultBps) / 10000;
+            const newNFT: NFT = {
+                address: `0x${result.hash.slice(2, 18)}...`, // Truncated tx hash as placeholder
+                name: `${strategy.name} #${mintedNFTs.length + 1}`,
+                vaultBalance: vaultAmount,
+                txHash: result.hash,
+            };
+
+            setMintedNFTs([newNFT, ...mintedNFTs]);
+        } catch (err) {
+            console.error("Mint failed:", err);
+            setError(err instanceof Error ? err.message : "Mint failed");
+        } finally {
+            setMinting(false);
+        }
     };
 
     return (
@@ -58,6 +92,21 @@ export default function MintPage() {
                     <h1 className="text-3xl font-bold text-white mb-2">Test Minting</h1>
                     <p className="text-gray-400">Choose a strategy and mint test NFTs to see vault seeding in action</p>
                 </div>
+
+                {/* Error Banner */}
+                {error && (
+                    <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-center">
+                        {error}
+                    </div>
+                )}
+
+                {/* Connect Wallet Prompt */}
+                {!connected && (
+                    <div className="mb-6 p-6 bg-purple-500/10 border border-purple-500/30 rounded-xl text-center">
+                        <p className="text-purple-300 mb-2">Connect your wallet to mint real NFTs on testnet</p>
+                        <p className="text-sm text-gray-400">Click the "Connect" button in the header</p>
+                    </div>
+                )}
 
                 {/* Strategy Grid */}
                 <div className="grid md:grid-cols-4 gap-4 mb-12">

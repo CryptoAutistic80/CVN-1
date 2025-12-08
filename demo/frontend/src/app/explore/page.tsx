@@ -3,10 +3,17 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
+import { useWallet } from "@/components/wallet-provider";
+import { CVN1_ADDRESS, getVaultBalances, vaultExists } from "@/lib/cvn1";
+
+// CEDRA native coin FA metadata address
+const CEDRA_FA = "0xa";
 
 export default function ExplorePage() {
+    const { connected, signAndSubmitTransaction } = useWallet();
     const [nftAddress, setNftAddress] = useState("");
     const [loading, setLoading] = useState(false);
+    const [error, setError] = useState<string | null>(null);
     const [vaultData, setVaultData] = useState<{
         exists: boolean;
         balances: { symbol: string; amount: number }[];
@@ -16,40 +23,95 @@ export default function ExplorePage() {
     const handleSearch = async () => {
         if (!nftAddress) return;
         setLoading(true);
-        await new Promise(resolve => setTimeout(resolve, 1000));
+        setError(null);
 
-        // Mock vault data
-        setVaultData({
-            exists: true,
-            balances: [
-                { symbol: "CEDRA", amount: 50 },
-                { symbol: "USDC", amount: 25 },
-            ],
-            isRedeemable: true,
-        });
-        setLoading(false);
+        try {
+            const exists = await vaultExists(nftAddress);
+            if (!exists) {
+                setVaultData({ exists: false, balances: [], isRedeemable: false });
+                setLoading(false);
+                return;
+            }
+
+            const balances = await getVaultBalances(nftAddress);
+            setVaultData({
+                exists: true,
+                balances: balances.map(b => ({
+                    symbol: "CEDRA",
+                    amount: Number(b.balance) / 1e8,
+                })),
+                isRedeemable: true,
+            });
+        } catch (err) {
+            console.error("Search failed:", err);
+            setError(err instanceof Error ? err.message : "Search failed");
+        } finally {
+            setLoading(false);
+        }
     };
 
     const [depositAmount, setDepositAmount] = useState("");
     const [depositing, setDepositing] = useState(false);
 
     const handleDeposit = async () => {
-        if (!depositAmount) return;
-        setDepositing(true);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-
-        if (vaultData) {
-            setVaultData({
-                ...vaultData,
-                balances: vaultData.balances.map(b =>
-                    b.symbol === "CEDRA"
-                        ? { ...b, amount: b.amount + Number(depositAmount) }
-                        : b
-                ),
-            });
+        if (!depositAmount || !connected) {
+            setError("Please connect wallet and enter amount");
+            return;
         }
-        setDepositAmount("");
-        setDepositing(false);
+        setDepositing(true);
+        setError(null);
+
+        try {
+            await signAndSubmitTransaction({
+                data: {
+                    function: `${CVN1_ADDRESS}::vaulted_collection::deposit_to_vault`,
+                    typeArguments: [],
+                    functionArguments: [
+                        nftAddress,
+                        CEDRA_FA,
+                        (Number(depositAmount) * 1e8).toString(),
+                    ],
+                },
+            });
+
+            // Refresh balances
+            await handleSearch();
+        } catch (err) {
+            console.error("Deposit failed:", err);
+            setError(err instanceof Error ? err.message : "Deposit failed");
+        } finally {
+            setDepositAmount("");
+            setDepositing(false);
+        }
+    };
+
+    const [redeeming, setRedeeming] = useState(false);
+
+    const handleRedeem = async () => {
+        if (!connected) {
+            setError("Please connect wallet first");
+            return;
+        }
+        setRedeeming(true);
+        setError(null);
+
+        try {
+            await signAndSubmitTransaction({
+                data: {
+                    function: `${CVN1_ADDRESS}::vaulted_collection::burn_and_redeem`,
+                    typeArguments: [],
+                    functionArguments: [nftAddress],
+                },
+            });
+
+            setVaultData(null);
+            setNftAddress("");
+        } catch (err) {
+            console.error("Redeem failed:", err);
+            setError(err instanceof Error ? err.message : "Redeem failed");
+        } finally {
+            setRedeeming(false);
+        }
     };
 
     return (
@@ -168,12 +230,21 @@ export default function ExplorePage() {
                             {/* Redeem */}
                             {vaultData.isRedeemable && (
                                 <button
-                                    className="w-full py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-400 font-medium"
+                                    onClick={handleRedeem}
+                                    disabled={redeeming || !connected}
+                                    className="w-full py-3 bg-red-500/20 hover:bg-red-500/30 border border-red-500/50 rounded-lg text-red-400 font-medium disabled:opacity-50"
                                 >
-                                    🔥 Burn & Redeem All
+                                    {redeeming ? "Burning..." : "🔥 Burn & Redeem All"}
                                 </button>
                             )}
                         </div>
+
+                        {/* Error Banner */}
+                        {error && (
+                            <div className="p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-center">
+                                {error}
+                            </div>
+                        )}
                     </div>
                 )}
             </div>

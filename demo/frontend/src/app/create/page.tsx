@@ -3,6 +3,12 @@
 import { useState } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
+import { useWallet } from "@/components/wallet-provider";
+import { CVN1_ADDRESS } from "@/lib/cvn1";
+
+// CEDRA native coin FA metadata address (0xa on testnet - the fungible asset metadata object)
+// Use 0x0 for free mints (contract accepts @0x0 as "no payment")
+const CEDRA_FA = "0xa";
 
 interface CollectionConfig {
     name: string;
@@ -50,6 +56,7 @@ const presets: Record<string, Partial<CollectionConfig>> = {
 };
 
 export default function CreatePage() {
+    const { connected, account, signAndSubmitTransaction } = useWallet();
     const [config, setConfig] = useState<CollectionConfig>({
         name: "My Vaulted Collection",
         description: "NFTs with built-in value",
@@ -64,6 +71,8 @@ export default function CreatePage() {
     const [selectedPreset, setSelectedPreset] = useState<string>("custom");
     const [creating, setCreating] = useState(false);
     const [created, setCreated] = useState(false);
+    const [txHash, setTxHash] = useState<string>("");
+    const [error, setError] = useState<string | null>(null);
 
     const applyPreset = (presetId: string) => {
         setSelectedPreset(presetId);
@@ -77,11 +86,44 @@ export default function CreatePage() {
     };
 
     const handleCreate = async () => {
+        if (!connected || !account) {
+            setError("Please connect your wallet first");
+            return;
+        }
+
         setCreating(true);
-        // Simulate API call to backend
-        await new Promise(resolve => setTimeout(resolve, 2000));
-        setCreated(true);
-        setCreating(false);
+        setError(null);
+
+        try {
+            // Call init_collection_config on the contract
+            // Signature: (name, desc, uri, creator_royalty_bps, vault_royalty_bps, mint_vault_bps, mint_price, mint_price_fa, allowed_assets, creator_payout_addr)
+            const result = await signAndSubmitTransaction({
+                data: {
+                    function: `${CVN1_ADDRESS}::vaulted_collection::init_collection_config`,
+                    typeArguments: [],
+                    functionArguments: [
+                        config.name,                                    // collection_name
+                        config.description,                              // collection_description
+                        config.uri,                                      // collection_uri
+                        config.creatorRoyaltyBps.toString(),            // creator_royalty_bps (u16)
+                        config.vaultRoyaltyBps.toString(),              // vault_royalty_bps (u16)
+                        config.mintVaultBps.toString(),                 // mint_vault_bps (u16)
+                        Math.floor(config.mintPrice * 1e8).toString(),  // mint_price (u64 in octas)
+                        CEDRA_FA,                                        // mint_price_fa (address)
+                        [],                                              // allowed_assets (empty = allow all)
+                        account.address?.toString() || "",              // creator_payout_addr
+                    ],
+                },
+            });
+
+            setTxHash(result.hash);
+            setCreated(true);
+        } catch (err) {
+            console.error("Create failed:", err);
+            setError(err instanceof Error ? err.message : "Create failed");
+        } finally {
+            setCreating(false);
+        }
     };
 
     const vaultAmount = (config.mintPrice * config.mintVaultBps) / 10000;
@@ -109,6 +151,21 @@ export default function CreatePage() {
                     <h1 className="text-3xl font-bold text-white mb-2">Create Vaulted Collection</h1>
                     <p className="text-gray-400">Configure your NFT collection with built-in vault mechanics</p>
                 </div>
+
+                {/* Error Banner */}
+                {error && (
+                    <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-center">
+                        {error}
+                    </div>
+                )}
+
+                {/* Connect Wallet Prompt */}
+                {!connected && (
+                    <div className="mb-6 p-6 bg-purple-500/10 border border-purple-500/30 rounded-xl text-center">
+                        <p className="text-purple-300 mb-2">Connect your wallet to create a collection on testnet</p>
+                        <p className="text-sm text-gray-400">Click the "Connect" button in the header</p>
+                    </div>
+                )}
 
                 {!created ? (
                     <div className="grid md:grid-cols-3 gap-8">
@@ -319,7 +376,12 @@ export default function CreatePage() {
                         <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-8 mb-6">
                             <span className="text-6xl mb-4 block">✅</span>
                             <h2 className="text-2xl font-bold text-white mb-2">Collection Created!</h2>
-                            <p className="text-gray-400">{config.name}</p>
+                            <p className="text-gray-400 mb-4">{config.name}</p>
+                            {txHash && (
+                                <p className="text-xs text-gray-500 font-mono break-all">
+                                    TX: {txHash}
+                                </p>
+                            )}
                         </div>
                         <Link
                             href="/mint"
