@@ -1,16 +1,16 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
 import { useWallet } from "@/components/wallet-provider";
-import { CVN1_ADDRESS, getVaultBalances, vaultExists } from "@/lib/cvn1";
+import { CVN1_ADDRESS, getVaultBalances, vaultExists, getWalletNfts, NFT, formatAddress } from "@/lib/cvn1";
 
 // CEDRA native coin FA metadata address
 const CEDRA_FA = "0xa";
 
 export default function ExplorePage() {
-    const { connected, signAndSubmitTransaction } = useWallet();
+    const { connected, account, signAndSubmitTransaction } = useWallet();
     const [nftAddress, setNftAddress] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
@@ -20,20 +20,39 @@ export default function ExplorePage() {
         isRedeemable: boolean;
     } | null>(null);
 
-    const handleSearch = async () => {
-        if (!nftAddress) return;
+    const [walletNfts, setWalletNfts] = useState<NFT[]>([]);
+    const [loadingNfts, setLoadingNfts] = useState(false);
+
+    // Fetch NFTs when connected
+    useEffect(() => {
+        if (connected && account?.address) {
+            setLoadingNfts(true);
+            getWalletNfts(account.address.toString())
+                .then(setWalletNfts)
+                .catch(err => console.error("Failed to load NFTs", err))
+                .finally(() => setLoadingNfts(false));
+        } else {
+            setWalletNfts([]);
+        }
+    }, [connected, account]);
+
+    const handleSearch = async (addr: string = nftAddress) => {
+        if (!addr) return;
+        // update address if passed explicitly (e.g. from click)
+        if (addr !== nftAddress) setNftAddress(addr);
+
         setLoading(true);
         setError(null);
 
         try {
-            const exists = await vaultExists(nftAddress);
+            const exists = await vaultExists(addr);
             if (!exists) {
                 setVaultData({ exists: false, balances: [], isRedeemable: false });
                 setLoading(false);
                 return;
             }
 
-            const balances = await getVaultBalances(nftAddress);
+            const balances = await getVaultBalances(addr);
             setVaultData({
                 exists: true,
                 balances: balances.map(b => ({
@@ -48,6 +67,11 @@ export default function ExplorePage() {
         } finally {
             setLoading(false);
         }
+    };
+
+    const handleNftClick = (nft: NFT) => {
+        setNftAddress(nft.address);
+        handleSearch(nft.address);
     };
 
     const [depositAmount, setDepositAmount] = useState("");
@@ -75,7 +99,7 @@ export default function ExplorePage() {
             });
 
             // Refresh balances
-            await handleSearch();
+            await handleSearch(nftAddress);
         } catch (err) {
             console.error("Deposit failed:", err);
             setError(err instanceof Error ? err.message : "Deposit failed");
@@ -106,6 +130,10 @@ export default function ExplorePage() {
 
             setVaultData(null);
             setNftAddress("");
+            // Refresh NFT list
+            if (account?.address) {
+                getWalletNfts(account.address.toString()).then(setWalletNfts);
+            }
         } catch (err) {
             console.error("Redeem failed:", err);
             setError(err instanceof Error ? err.message : "Redeem failed");
@@ -147,13 +175,51 @@ export default function ExplorePage() {
                         className="flex-1 px-4 py-3 bg-gray-800/50 border border-gray-700 rounded-xl text-white focus:border-purple-500 focus:outline-none font-mono text-sm"
                     />
                     <button
-                        onClick={handleSearch}
+                        onClick={() => handleSearch()}
                         disabled={loading || !nftAddress}
                         className="px-6 py-3 bg-gradient-to-r from-purple-500 to-pink-500 rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50"
                     >
                         {loading ? "..." : "Search"}
                     </button>
                 </div>
+
+                {/* Your NFTs */}
+                {connected && (
+                    <div className="mb-8">
+                        <h3 className="text-sm font-semibold text-gray-400 mb-3 uppercase tracking-wider">Your NFTs</h3>
+                        {loadingNfts ? (
+                            <div className="text-center py-4 text-gray-500 animate-pulse">Loading tokens...</div>
+                        ) : walletNfts.length > 0 ? (
+                            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+                                {walletNfts.map((nft) => (
+                                    <button
+                                        key={nft.address}
+                                        onClick={() => handleNftClick(nft)}
+                                        className={`group relative p-3 rounded-lg border text-left transition-all ${nftAddress === nft.address
+                                            ? "bg-purple-500/20 border-purple-500 ring-1 ring-purple-500"
+                                            : "bg-gray-800/50 border-gray-700 hover:border-gray-500"
+                                            }`}
+                                    >
+                                        <div className="flex items-start justify-between mb-2">
+                                            <div className="w-8 h-8 rounded bg-gradient-to-br from-gray-700 to-gray-600 flex items-center justify-center text-lg">
+                                                💎
+                                            </div>
+                                            {nft.hasVault && (
+                                                <span className="text-xs bg-green-500/20 text-green-400 px-1.5 py-0.5 rounded">Vault</span>
+                                            )}
+                                        </div>
+                                        <div className="font-medium text-white text-sm truncate">{nft.name}</div>
+                                        <div className="text-xs text-gray-500 truncate font-mono">{formatAddress(nft.address)}</div>
+                                    </button>
+                                ))}
+                            </div>
+                        ) : (
+                            <div className="text-center py-4 bg-gray-800/30 rounded-xl border border-dashed border-gray-700 text-gray-500 text-sm">
+                                No NFTs found in this wallet
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Vault Display */}
                 {vaultData && (
