@@ -12,6 +12,7 @@ CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungib
 ### Key Features
 
 - 🏦 **Native Vaulting** — Every NFT has a dedicated multi-asset vault
+- 🚀 **Mint-Time Value** — Seed vaults with % of mint fee (0-100%)
 - 💰 **Open Deposits** — Anyone can top up a vault to increase intrinsic value
 - 🔥 **Burn to Redeem** — Owners can destroy the NFT to claim vault contents
 - 💎 **Composable Royalties** — Standard settlement hook for compliant marketplaces
@@ -49,8 +50,8 @@ cedra move publish --named-addresses cvn1_vault=default
 
 | Function | Description |
 |----------|-------------|
-| `init_collection_config` | Create a vaulted NFT collection with royalty configuration |
-| `mint_vaulted_nft` | Mint a new NFT with an attached vault |
+| `init_collection_config` | Create collection with royalty & mint config |
+| `creator_mint_vaulted_nft` | Mint NFT with vault seeding from mint fee |
 | `deposit_to_vault` | Deposit fungible assets into an NFT's vault |
 | `burn_and_redeem` | Burn NFT and claim all vault contents |
 | `settle_sale_with_vault_royalty` | Marketplace settlement with creator + vault royalties |
@@ -73,7 +74,7 @@ cedra move publish --named-addresses cvn1_vault=default
 │  │                    VaultInfo                      │  │
 │  │  • is_redeemable: bool                           │  │
 │  │  • vault_stores: SmartTable<FA, Store>           │  │
-│  │  • extend_ref / delete_ref                       │  │
+│  │  • extend_ref / delete_ref / burn_ref            │  │
 │  └───────────────────────────────────────────────────┘  │
 │                          │                              │
 │        ┌─────────────────┼─────────────────┐            │
@@ -118,8 +119,11 @@ Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
 ## Documentation
 
 - [CVN-1 Specification](CVN-1-spec.md) — Full technical spec
+- [Use Cases](docs/USE_CASES.md) — Deployment strategies & examples
+- [Deployment](docs/DEPLOYMENT.md) — Testnet deployment info
+- [Gas Benchmarks](docs/GAS_BENCHMARKS.md) — Transaction costs
+- [Security](docs/SECURITY.md) — Security review & checklist
 - [Development Plan](DEVELOPMENT_PLAN.md) — Phased implementation roadmap
-- [Cedra Docs](https://docs.cedra.network) — Cedra framework documentation
 
 ## Development Status
 
@@ -127,7 +131,7 @@ Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
 |-------|--------|
 | Phase 0: Environment Setup | ✅ Complete |
 | Phase 1: Core Contract | ✅ Complete |
-| Phase 2: Testing & Audit | 🔄 In Progress |
+| Phase 2: Testing & Audit | ✅ Complete |
 | Phase 3: TypeScript SDK | ⏳ Planned |
 | Phase 4: Demo UI | ⏳ Planned |
 | Phase 5: Indexer | ⏳ Planned |

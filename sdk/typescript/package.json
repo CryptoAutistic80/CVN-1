@@ -1,0 +1,33 @@
+{
+    "name": "@cvn1/sdk",
+    "version": "1.0.0",
+    "description": "TypeScript SDK for CVN-1 Vaulted NFT Standard on Cedra",
+    "main": "dist/index.js",
+    "types": "dist/index.d.ts",
+    "scripts": {
+        "build": "tsc",
+        "test": "vitest run",
+        "test:watch": "vitest",
+        "lint": "eslint src --ext .ts"
+    },
+    "keywords": [
+        "cedra",
+        "nft",
+        "vault",
+        "cvn-1",
+        "blockchain"
+    ],
+    "author": "Singularity Shift Ltd",
+    "license": "UNLICENSED",
+    "dependencies": {
+        "@cedra-labs/ts-sdk": "^2.2.8"
+    },
+    "devDependencies": {
+        "typescript": "^5.3.0",
+        "vitest": "^1.0.0",
+        "@types/node": "^20.0.0"
+    },
+    "engines": {
+        "node": ">=18.0.0"
+    }
+}

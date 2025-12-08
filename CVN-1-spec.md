@@ -21,8 +21,11 @@ Cedra NFTs already support object-owned fungible asset (FA) balances, but there 
 ```move
 struct VaultedCollectionConfig has key {
     collection_addr: address,
-    creator_royalty_bps: u16,   // creator fee in basis points
-    vault_royalty_bps: u16,     // vault top-up fee in basis points
+    creator_royalty_bps: u16,   // creator fee in basis points (secondary sales)
+    vault_royalty_bps: u16,     // vault top-up fee in basis points (secondary sales)
+    mint_vault_bps: u16,        // % of mint fee to seed into vault (0-10000)
+    mint_price: u64,            // mint cost in smallest FA units (0 = free)
+    mint_price_fa: address,     // FA metadata address for mint payments
     allowed_assets: vector<address>, // empty => any FA type allowed
     creator_payout_addr: address,
 }
@@ -36,18 +39,26 @@ struct VaultInfo has key {
     vault_stores: SmartTable<address, address>, // fa_metadata_addr -> store_object_addr
     extend_ref: ExtendRef,  // For extending vault object capabilities
     delete_ref: DeleteRef,  // For cleanup on burn+redeem
+    burn_ref: BurnRef,      // For burning the token
+    creator_addr: address,  // For config lookup
+    last_sale_compliant: bool, // Tracks if last sale used vault royalty
 }
 ```
-`VaultInfo` marks an NFT as vaulted and captures redeemability. The vault's fungible balances live in FA `FungibleStore` objects owned by the NFT's object address (one per FA type). The `SmartTable` tracks each deposited FA type's store address. `ExtendRef` and `DeleteRef` enable proper lifecycle management per the Cedra Escrow guide pattern.
+`VaultInfo` marks an NFT as vaulted and captures redeemability. The vault's fungible balances live in FA `FungibleStore` objects owned by the NFT's object address (one per FA type). The `SmartTable` tracks each deposited FA type's store address. `ExtendRef`, `DeleteRef`, and `BurnRef` enable proper lifecycle management per the Cedra Escrow guide pattern.
 
 ## Lifecycle flows
 ### Mint vaulted NFT
-Entry: `mint_vaulted_nft(creator, to, name, description, uri, initial_vault_assets)`
+Entry: `creator_mint_vaulted_nft(creator, buyer, to, name, description, uri, is_redeemable)`
 1. Validate `creator` owns the collection (per Cedra NFT guide).
 2. Mint NFT supply = 1 via `token::create_named_token`.
-3. Record `VaultInfo { nft_object_addr, is_redeemable: true }` under the NFT’s address.
-4. For each `(fa_type, amount)` in `initial_vault_assets`, withdraw from `creator` and deposit into the NFT’s FA store (creating on first use).
+3. Record `VaultInfo` under the NFT's address with `BurnRef` for later destruction.
+4. If `mint_price > 0`:
+   - Calculate `vault_seed = mint_price * mint_vault_bps / 10000`
+   - Withdraw `mint_price` from `buyer`
+   - Deposit `mint_price - vault_seed` to `creator_payout_addr`
+   - Deposit `vault_seed` directly into NFT's vault (immediate value!)
 5. Transfer the NFT to `to`.
+6. Emit `VaultedNFTMinted` event.
 
 ### Open deposits
 Entry: `deposit_to_vault(depositor, nft_object, fa_type, amount)`
@@ -190,18 +201,22 @@ module cvn1_vault::vaulted_collection {
         collection_uri: String,
         creator_royalty_bps: u16,
         vault_royalty_bps: u16,
+        mint_vault_bps: u16,        // NEW: % of mint fee to vault
+        mint_price: u64,            // NEW: mint cost (0 = free)
+        mint_price_fa: address,     // NEW: FA for mint payments
         allowed_assets: vector<address>,
         creator_payout_addr: address
     );
 
-    public entry fun mint_vaulted_nft(
+    public entry fun creator_mint_vaulted_nft(
         creator: &signer,
+        buyer: &signer,             // Pays the mint fee
         to: address,
         name: String,
         description: String,
         uri: String,
         is_redeemable: bool
-    ) acquires VaultedCollectionConfig;
+    ) acquires VaultedCollectionConfig, VaultInfo;
 
     public entry fun deposit_to_vault(
         depositor: &signer,
