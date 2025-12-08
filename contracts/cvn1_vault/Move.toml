@@ -1,0 +1,15 @@
+[package]
+name = "cvn1_vault"
+version = "1.0.0"
+authors = ["Singularity Shift Ltd"]
+license = "Proprietary"
+
+[addresses]
+cvn1_vault = "_"
+
+[dependencies]
+CedraFramework = { git = "https://github.com/cedra-labs/cedra-framework.git", subdir = "cedra-framework", rev = "mainnet" }
+CedraTokenObjects = { git = "https://github.com/cedra-labs/cedra-framework.git", subdir = "cedra-token-objects", rev = "mainnet" }
+CedraStdlib = { git = "https://github.com/cedra-labs/cedra-framework.git", subdir = "cedra-stdlib", rev = "mainnet" }
+
+[dev-dependencies]
