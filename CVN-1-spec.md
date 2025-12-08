@@ -32,11 +32,13 @@ Stored once under the collection creator. Basis points use `10000 = 100%` to mat
 ### Per-token vault marker
 ```move
 struct VaultInfo has key {
-    nft_object_addr: address,
     is_redeemable: bool,
+    vault_stores: SmartTable<address, address>, // fa_metadata_addr -> store_object_addr
+    extend_ref: ExtendRef,  // For extending vault object capabilities
+    delete_ref: DeleteRef,  // For cleanup on burn+redeem
 }
 ```
-`VaultInfo` marks an NFT as vaulted and captures redeemability. The vault’s fungible balances live in FA `FungibleStore` objects owned by the NFT’s object address (one per FA type), consistent with the FA guide.
+`VaultInfo` marks an NFT as vaulted and captures redeemability. The vault's fungible balances live in FA `FungibleStore` objects owned by the NFT's object address (one per FA type). The `SmartTable` tracks each deposited FA type's store address. `ExtendRef` and `DeleteRef` enable proper lifecycle management per the Cedra Escrow guide pattern.
 
 ## Lifecycle flows
 ### Mint vaulted NFT
@@ -57,16 +59,21 @@ Entry: `deposit_to_vault(depositor, nft_object, fa_type, amount)`
 Entry: `burn_and_redeem(owner, nft_object)`
 1. Confirm `owner` currently owns `nft_object`.
 2. Ensure `is_redeemable`.
-3. For each FA store owned by `nft_addr`, withdraw full balances and deposit to `owner`.
-4. Burn the NFT via `token::burn` and destroy the object; delete `VaultInfo`.
+3. Iterate the `vault_stores` SmartTable; for each FA store, withdraw full balance and deposit to `owner`.
+4. Emit `VaultRedeemed` event with asset totals.
+5. Use `delete_ref` to clean up any vault objects.
+6. Burn the NFT via `token::burn` and delete `VaultInfo`.
 
 ## Royalty + settlement hook
 ### Standard entry
 `settle_sale_with_vault_royalty(marketplace, nft_object, buyer, sale_currency, gross_amount)`
-1. Compute:
-   - `creator_cut = gross_amount * creator_royalty_bps / 10000`
-   - `vault_cut = gross_amount * vault_royalty_bps / 10000`
-   - `seller_net = gross_amount - creator_cut - vault_cut`
+1. Compute using overflow-safe math (per Cedra Fee Splitter guide):
+   ```move
+   use cedra_std::math64;
+   let creator_cut = math64::mul_div(gross_amount, (creator_royalty_bps as u64), 10000);
+   let vault_cut = math64::mul_div(gross_amount, (vault_royalty_bps as u64), 10000);
+   let seller_net = gross_amount - creator_cut - vault_cut;
+   ```
 2. Marketplace holds `gross_amount` in its FA store for `sale_currency`.
 3. Transfers:
    - `creator_cut` → `creator_payout_addr`
@@ -89,52 +96,204 @@ Entry: `burn_and_redeem(owner, nft_object)`
 - **Asset allowlist:** Restrict vault assets to trusted FA types to avoid spam tokens.
 - **No re-entrancy:** Keep flows linear (withdraw → deposit) without callbacks.
 - **One-way burn:** Burn destroys the NFT and vault marker permanently.
+- **Overflow-safe math:** Use `math64::mul_div` for all basis-point calculations.
+- **SmartTable for multi-asset:** Gas-efficient tracking of multiple FA types per vault.
 
 ## Implementation blueprint (Move)
 Module name suggestion: `cvn1_vault::vaulted_collection`.
 
-Key entry functions and signatures:
+### Imports (per Cedra framework)
 ```move
 module cvn1_vault::vaulted_collection {
-    use std::string::String;
+    use std::string::{Self, String};
+    use std::option::{Self, Option};
+    use std::signer;
+    use std::vector;
+    
+    use cedra_framework::object::{Self, Object, ExtendRef, DeleteRef};
+    use cedra_framework::fungible_asset::{Self, Metadata, FungibleStore};
+    use cedra_framework::primary_fungible_store;
+    use cedra_framework::event;
+    
     use cedra_token_objects::collection;
-    use cedra_token_objects::token;
-    use fungible_asset::store::FungibleStore;
-    use object::{self, Object};
+    use cedra_token_objects::token::{Self, Token};
+    
+    use cedra_std::math64;
+    use cedra_std::smart_table::{Self, SmartTable};
+```
 
-    struct VaultedCollectionConfig has key { ... }
-    struct VaultInfo has key { ... }
+### Error codes
+```move
+    const ENOT_CREATOR: u64 = 1;
+    const ENOT_OWNER: u64 = 2;
+    const ENOT_REDEEMABLE: u64 = 3;
+    const EINVALID_AMOUNT: u64 = 4;
+    const EASSET_NOT_ALLOWED: u64 = 5;
+    const EINSUFFICIENT_BALANCE: u64 = 6;
+    const ECOLLECTION_ALREADY_EXISTS: u64 = 7;
+    const EVAULT_NOT_FOUND: u64 = 8;
+    
+    const MAX_BPS: u64 = 10000;
+```
 
-    public entry fun init_collection_config(creator: &signer, creator_royalty_bps: u16, vault_royalty_bps: u16, allowed_assets: vector<address>, creator_payout_addr: address);
+### Data structures
+```move
+    struct VaultedCollectionConfig has key {
+        collection_addr: address,
+        creator_royalty_bps: u16,
+        vault_royalty_bps: u16,
+        allowed_assets: vector<address>,
+        creator_payout_addr: address,
+    }
+    
+    struct VaultInfo has key {
+        is_redeemable: bool,
+        vault_stores: SmartTable<address, address>, // fa_metadata -> store_addr
+        extend_ref: ExtendRef,
+        delete_ref: DeleteRef,
+    }
+```
 
-    public entry fun mint_vaulted_nft(creator: &signer, to: address, name: String, description: String, uri: String, initial_vault_assets: vector<(address, u64)>) acquires VaultedCollectionConfig;
+### Events
+```move
+    #[event]
+    struct VaultDeposited has drop, store {
+        nft_object_addr: address,
+        fa_type: address,
+        amount: u64,
+        depositor: address,
+    }
+    
+    #[event]
+    struct VaultRedeemed has drop, store {
+        nft_object_addr: address,
+        redeemer: address,
+    }
+    
+    #[event]
+    struct RoyaltySettled has drop, store {
+        nft_object_addr: address,
+        sale_currency: address,
+        gross_amount: u64,
+        creator_cut: u64,
+        vault_cut: u64,
+        seller_net: u64,
+    }
+```
 
-    public entry fun deposit_to_vault(depositor: &signer, nft_object: Object<token::Token>, fa_type: address, amount: u64) acquires VaultInfo, VaultedCollectionConfig;
+### Entry functions
+```move
+    public entry fun init_collection_config(
+        creator: &signer,
+        collection_name: String,
+        collection_description: String,
+        collection_uri: String,
+        creator_royalty_bps: u16,
+        vault_royalty_bps: u16,
+        allowed_assets: vector<address>,
+        creator_payout_addr: address
+    );
 
-    public entry fun burn_and_redeem(owner: &signer, nft_object: Object<token::Token>) acquires VaultInfo;
+    public entry fun mint_vaulted_nft(
+        creator: &signer,
+        to: address,
+        name: String,
+        description: String,
+        uri: String,
+        is_redeemable: bool
+    ) acquires VaultedCollectionConfig;
 
-    public entry fun settle_sale_with_vault_royalty(marketplace: &signer, nft_object: Object<token::Token>, buyer: address, sale_currency: address, gross_amount: u64) acquires VaultInfo, VaultedCollectionConfig;
+    public entry fun deposit_to_vault(
+        depositor: &signer,
+        nft_object: Object<Token>,
+        fa_metadata: Object<Metadata>,
+        amount: u64
+    ) acquires VaultInfo, VaultedCollectionConfig;
 
+    public entry fun burn_and_redeem(
+        owner: &signer,
+        nft_object: Object<Token>
+    ) acquires VaultInfo;
+
+    public entry fun settle_sale_with_vault_royalty(
+        marketplace: &signer,
+        nft_object: Object<Token>,
+        buyer: address,
+        sale_currency: Object<Metadata>,
+        gross_amount: u64
+    ) acquires VaultInfo, VaultedCollectionConfig;
+```
+
+### View functions
+```move
     #[view]
-    public fun get_vault_balances(nft_addr: address): vector<(address, u64)>;
+    public fun get_vault_balances(nft_addr: address): vector<(address, u64)> acquires VaultInfo;
+    
     #[view]
-    public fun get_vault_config(): (u16, u16, vector<address>, address);
+    public fun get_vault_config(creator_addr: address): (u16, u16, vector<address>, address) acquires VaultedCollectionConfig;
+    
+    #[view]
+    public fun vault_exists(nft_addr: address): bool;
+    
     #[view]
     public fun last_sale_used_vault_royalty(nft_addr: address): bool;
 }
 ```
 
-Implementation notes:
-- Use `object::id` to derive `nft_addr` and `object::transfer` to move NFTs.
-- Create per-asset `FungibleStore` owned by `nft_addr`; use `store::create_store` on first deposit.
-- Emit events on deposit, redeem, and settlement to aid indexers (e.g., `VaultDeposited`, `VaultRedeemed`, `RoyaltySettled`).
-- Keep arithmetic in `u128` where possible before casting back to avoid bps overflow.
+### Implementation notes
+- Use `object::object_address(&nft_object)` to get `nft_addr` and `object::transfer` to move NFTs.
+- Create per-asset `FungibleStore` using `fungible_asset::create_store(&constructor_ref, fa_metadata)` pattern from Escrow guide.
+- Store each FA store address in `vault_stores` SmartTable keyed by FA metadata address.
+- Use `math64::mul_div(amount, bps, 10000)` for all royalty calculations (prevents overflow).
+- Emit events via `event::emit(EventStruct { ... })` on deposit, redeem, and settlement.
+- Use `object::generate_signer_for_extending(&extend_ref)` to get signer for vault operations.
 
 ## Reference flows (TypeScript client with `@cedra-labs/ts-sdk`)
-- **Mint:** Build a transaction that calls `mint_vaulted_nft`, providing initial vault assets. Use `sponsoredTransaction` helpers if creator seeds vaults for buyers.
-- **Deposit:** Call `deposit_to_vault` with FA type address and amount; UI should fetch `get_vault_balances` to confirm.
-- **Redeem:** Call `burn_and_redeem`; prompt the user to approve burning the NFT. After execution, NFT disappears and wallet receives vault assets.
-- **Marketplace settlement:** Marketplace backend constructs a transaction that first ensures it holds payment FAs, then calls `settle_sale_with_vault_royalty`; afterwards it transfers the NFT to buyer within the same entry.
+
+### Building transactions (entry function calls)
+```typescript
+import { Cedra, CedraConfig, Account, Network } from "@cedra-labs/ts-sdk";
+
+const config = new CedraConfig({ network: Network.TESTNET });
+const cedra = new Cedra(config);
+
+// Mint vaulted NFT
+const mintTx = await cedra.transaction.build.simple({
+    sender: creator.accountAddress,
+    data: {
+        function: `${MODULE_ADDR}::vaulted_collection::mint_vaulted_nft`,
+        typeArguments: [],
+        functionArguments: [
+            recipientAddress,
+            "NFT Name",
+            "Description",
+            "https://metadata.uri/token.json",
+            true // is_redeemable
+        ],
+    },
+});
+const pendingTx = await cedra.signAndSubmitTransaction({ signer: creator, transaction: mintTx });
+await cedra.waitForTransaction({ transactionHash: pendingTx.hash });
+```
+
+### Querying view functions
+```typescript
+// Get vault balances (gas-free view call)
+const [balances] = await cedra.view({
+    payload: {
+        function: `${MODULE_ADDR}::vaulted_collection::get_vault_balances`,
+        typeArguments: [],
+        functionArguments: [nftObjectAddress],
+    },
+});
+console.log("Vault balances:", balances);
+```
+
+### Flow summary
+- **Mint:** Use `transaction.build.simple` + `signAndSubmitTransaction` for `mint_vaulted_nft`.
+- **Deposit:** Same pattern for `deposit_to_vault`, then call `get_vault_balances` view to confirm.
+- **Redeem:** Call `burn_and_redeem`; prompt user to approve burning. After tx, NFT is gone and wallet receives vault assets.
+- **Marketplace:** Build transaction calling `settle_sale_with_vault_royalty` with correct FA metadata object.
 
 ## Indexer strategy
 - Watch for `VaultInfo` creation to register vaulted NFTs.
@@ -157,3 +316,6 @@ Implementation notes:
 ## References
 - Cedra NFT walkthrough: https://docs.cedra.network/guides/first-nft
 - Cedra fungible assets (FA) walkthrough: https://docs.cedra.network/guides/first-fa
+- Cedra Fee Splitter guide: https://docs.cedra.network/guides/fee-splitter
+- Cedra Escrow guide: https://docs.cedra.network/guides/escrow
+- Cedra Resource patterns: https://docs.cedra.network/move/resource
