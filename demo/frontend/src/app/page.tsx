@@ -100,7 +100,7 @@ export default function Home() {
         <div className="max-w-7xl mx-auto px-6 text-center text-gray-500 text-sm">
           <p>Deployed on Cedra Testnet</p>
           <p className="mt-2 font-mono text-xs">
-            Contract: 0x921213f0f52998b002b7f2c4fcf2b7042dab9f1a5f44a36158ed6424afc25bb7
+            Contract: 0xdd8a5cf89985a6d8bb4f91c7b943d2bdbc2faae400aa6737e877feb68369f926
           </p>
         </div>
       </footer>

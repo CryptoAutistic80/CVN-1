@@ -82,8 +82,8 @@ module cvn1_vault::vaulted_collection {
         vault_stores: SmartTable<address, address>,
         /// Reference for extending vault object capabilities
         extend_ref: ExtendRef,
-        /// Reference for cleanup on burn+redeem
-        delete_ref: DeleteRef,
+        /// Reference for cleanup on burn+redeem (optional - named tokens may not support deletion)
+        delete_ref: option::Option<DeleteRef>,
         /// Reference for burning the token
         burn_ref: BurnRef,
         /// Address of the collection creator (for config lookup)
@@ -246,7 +246,7 @@ module cvn1_vault::vaulted_collection {
             is_redeemable,
             vault_stores: smart_table::new(),
             extend_ref,
-            delete_ref,
+            delete_ref: option::some(delete_ref),
             burn_ref,
             creator_addr,
             last_sale_compliant: false,
@@ -329,7 +329,7 @@ module cvn1_vault::vaulted_collection {
         
         // Create refs for vault lifecycle management
         let extend_ref = object::generate_extend_ref(&constructor_ref);
-        let delete_ref = object::generate_delete_ref(&constructor_ref);
+        // Named tokens don't support deletion, so skip delete_ref
         let burn_ref = token::generate_burn_ref(&constructor_ref);
         
         // Initialize VaultInfo under the NFT address
@@ -337,7 +337,7 @@ module cvn1_vault::vaulted_collection {
             is_redeemable,
             vault_stores: smart_table::new(),
             extend_ref,
-            delete_ref,
+            delete_ref: option::none(),
             burn_ref,
             creator_addr,
             last_sale_compliant: false,

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 mod routes;
 
 // CVN-1 contract address on testnet
-pub const CVN1_ADDRESS: &str = "0x921213f0f52998b002b7f2c4fcf2b7042dab9f1a5f44a36158ed6424afc25bb7";
+pub const CVN1_ADDRESS: &str = "0xdd8a5cf89985a6d8bb4f91c7b943d2bdbc2faae400aa6737e877feb68369f926";
 
 #[derive(Debug, Serialize)]
 struct HealthResponse {

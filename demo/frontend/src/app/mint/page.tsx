@@ -6,7 +6,7 @@ import { ConnectButton } from "@/components/ConnectButton";
 import { useWallet } from "@/components/wallet-provider";
 
 // CVN-1 Contract on testnet
-const CVN1_ADDRESS = "0x921213f0f52998b002b7f2c4fcf2b7042dab9f1a5f44a36158ed6424afc25bb7";
+const CVN1_ADDRESS = "0xdd8a5cf89985a6d8bb4f91c7b943d2bdbc2faae400aa6737e877feb68369f926";
 const MODULE_NAME = "vaulted_collection";
 
 interface NFT {
