@@ -4,6 +4,7 @@
 module cvn1_vault::vault_ops {
     use std::signer;
     use std::vector;
+    use std::option;
     
     use cedra_framework::object::{Self, Object};
     use cedra_framework::fungible_asset::{Self, Metadata, FungibleStore};
@@ -60,6 +61,13 @@ module cvn1_vault::vault_ops {
     }
 
     /// Burn an NFT and redeem all vault contents to the owner
+    /// 
+    /// This function:
+    /// 1. Verifies ownership and redeemability
+    /// 2. Withdraws all vault contents to owner
+    /// 3. Cleans up SmartTable
+    /// 4. Burns the token
+    /// 5. Uses delete_ref (if available) for object cleanup
     public entry fun burn_and_redeem(
         owner: &signer,
         nft_object: Object<Token>
@@ -75,7 +83,8 @@ module cvn1_vault::vault_ops {
         assert!(vault_core::is_vault_redeemable(nft_addr), vault_core::err_not_redeemable());
         
         // Extract vault for redemption (destructive - removes VaultInfo)
-        let (extend_ref, burn_ref, vault_stores) = vault_core::extract_vault_for_redeem(nft_addr);
+        let (extend_ref, burn_ref, delete_ref_opt, vault_stores, store_delete_refs) = 
+            vault_core::extract_vault_for_redeem(nft_addr);
         
         // Get vault signer for withdrawals
         let vault_signer = object::generate_signer_for_extending(&extend_ref);
@@ -83,7 +92,7 @@ module cvn1_vault::vault_ops {
         // Collect all FA addresses for the event
         let redeemed_assets = vector::empty<address>();
         
-        // Iterate all stores and withdraw to owner
+        // Iterate all stores: withdraw contents and delete the store objects
         let keys = smart_table::keys(&vault_stores);
         let i = 0;
         let len = vector::length(&keys);
@@ -99,16 +108,32 @@ module cvn1_vault::vault_ops {
                 primary_fungible_store::deposit(owner_addr, fa);
                 vector::push_back(&mut redeemed_assets, fa_addr);
             };
+            
+            // Delete the empty FungibleStore object using its stored DeleteRef
+            let store_delete_ref = smart_table::remove(&mut store_delete_refs, fa_addr);
+            object::delete(store_delete_ref);
+            
             i = i + 1;
         };
         
-        // Clean up the SmartTable
+        // Clean up the SmartTables
         smart_table::destroy(vault_stores);
+        smart_table::destroy(store_delete_refs);
         
         // Emit redeem event
         vault_events::emit_redeemed(nft_addr, owner_addr, redeemed_assets);
         
         // Burn the token
         token::burn(burn_ref);
+        
+        // Use delete_ref if available to clean up the NFT object
+        // Named tokens don't support deletion (delete_ref is None)
+        if (option::is_some(&delete_ref_opt)) {
+            let delete_ref = option::destroy_some(delete_ref_opt);
+            object::delete(delete_ref);
+        } else {
+            option::destroy_none(delete_ref_opt);
+        };
     }
 }
+

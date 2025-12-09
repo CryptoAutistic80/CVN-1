@@ -98,6 +98,8 @@ module cvn1_vault::vault_core {
         is_redeemable: bool,
         /// Maps FA metadata address -> store object address
         vault_stores: SmartTable<address, address>,
+        /// Maps FA metadata address -> store DeleteRef for cleanup
+        store_delete_refs: SmartTable<address, DeleteRef>,
         /// Reference for extending vault object capabilities
         extend_ref: ExtendRef,
         /// Reference for cleanup on burn+redeem (optional - named tokens may not support deletion)
@@ -267,6 +269,7 @@ module cvn1_vault::vault_core {
         move_to(signer, VaultInfo {
             is_redeemable,
             vault_stores: smart_table::new(),
+            store_delete_refs: smart_table::new(),
             extend_ref,
             delete_ref,
             burn_ref,
@@ -292,9 +295,15 @@ module cvn1_vault::vault_core {
         if (!smart_table::contains(&vault_info.vault_stores, fa_addr)) {
             let vault_signer = object::generate_signer_for_extending(&vault_info.extend_ref);
             let store_constructor = object::create_object_from_account(&vault_signer);
+            
+            // Generate DeleteRef before creating the store
+            let store_delete_ref = object::generate_delete_ref(&store_constructor);
+            
             let store = fungible_asset::create_store(&store_constructor, fa_metadata);
             let store_addr = object::object_address(&store);
+            
             smart_table::add(&mut vault_info.vault_stores, fa_addr, store_addr);
+            smart_table::add(&mut vault_info.store_delete_refs, fa_addr, store_delete_ref);
         };
         
         // Deposit
@@ -323,19 +332,26 @@ module cvn1_vault::vault_core {
     }
 
     /// Move vault out for burn_and_redeem (destructive)
-    /// Returns: (extend_ref, burn_ref, vault_stores)
-    public(friend) fun extract_vault_for_redeem(nft_addr: address): (ExtendRef, BurnRef, SmartTable<address, address>)
-    acquires VaultInfo {
+    /// Returns: (extend_ref, burn_ref, delete_ref, vault_stores, store_delete_refs)
+    /// delete_ref may be None for named tokens that don't support deletion
+    public(friend) fun extract_vault_for_redeem(nft_addr: address): (
+        ExtendRef, 
+        BurnRef, 
+        Option<DeleteRef>, 
+        SmartTable<address, address>,
+        SmartTable<address, DeleteRef>
+    ) acquires VaultInfo {
         let VaultInfo {
             is_redeemable: _,
             vault_stores,
+            store_delete_refs,
             extend_ref,
-            delete_ref: _,
+            delete_ref,
             burn_ref,
             creator_addr: _,
             last_sale_compliant: _,
         } = move_from<VaultInfo>(nft_addr);
         
-        (extend_ref, burn_ref, vault_stores)
+        (extend_ref, burn_ref, delete_ref, vault_stores, store_delete_refs)
     }
 }
