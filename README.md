@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/Version-4.0.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
-[![Tests](https://img.shields.io/badge/Tests-25%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-28%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
