@@ -4,7 +4,7 @@ import { useState } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
 import { useWallet } from "@/components/wallet-provider";
-import { CVN1_ADDRESS } from "@/lib/cvn1";
+import { CVN1_ADDRESS, getCollectionAddrFromTx } from "@/lib/cvn1";
 
 // CEDRA native coin FA metadata address (0xa on testnet - the fungible asset metadata object)
 // Use 0x0 for free mints (contract accepts @0x0 as "no payment")
@@ -72,6 +72,7 @@ export default function CreatePage() {
     const [creating, setCreating] = useState(false);
     const [created, setCreated] = useState(false);
     const [txHash, setTxHash] = useState<string>("");
+    const [collectionAddr, setCollectionAddr] = useState<string>("");
     const [error, setError] = useState<string | null>(null);
 
     const applyPreset = (presetId: string) => {
@@ -96,7 +97,6 @@ export default function CreatePage() {
 
         try {
             // Call init_collection_config on the contract
-            // Signature: (name, desc, uri, creator_royalty_bps, vault_royalty_bps, mint_vault_bps, mint_price, mint_price_fa, allowed_assets, creator_payout_addr)
             const result = await signAndSubmitTransaction({
                 data: {
                     function: `${CVN1_ADDRESS}::vaulted_collection::init_collection_config`,
@@ -117,6 +117,13 @@ export default function CreatePage() {
             });
 
             setTxHash(result.hash);
+
+            // Retrieve collection address from transaction events
+            const addr = await getCollectionAddrFromTx(result.hash);
+            if (addr) {
+                setCollectionAddr(addr);
+            }
+
             setCreated(true);
         } catch (err) {
             console.error("Create failed:", err);
@@ -377,6 +384,12 @@ export default function CreatePage() {
                             <span className="text-6xl mb-4 block">✅</span>
                             <h2 className="text-2xl font-bold text-white mb-2">Collection Created!</h2>
                             <p className="text-gray-400 mb-4">{config.name}</p>
+                            {collectionAddr && (
+                                <div className="bg-gray-900/50 p-3 rounded-lg mb-4 text-left">
+                                    <p className="text-xs text-gray-400 mb-1">Collection Address</p>
+                                    <p className="text-sm font-mono text-white break-all">{collectionAddr}</p>
+                                </div>
+                            )}
                             {txHash && (
                                 <p className="text-xs text-gray-500 font-mono break-all">
                                     TX: {txHash}
@@ -384,7 +397,7 @@ export default function CreatePage() {
                             )}
                         </div>
                         <Link
-                            href="/mint"
+                            href={collectionAddr ? `/mint?collection=${collectionAddr}` : "/mint"}
                             className="inline-block py-3 px-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold hover:opacity-90"
                         >
                             Start Minting →

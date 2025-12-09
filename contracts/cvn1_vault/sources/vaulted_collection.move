@@ -53,10 +53,8 @@ module cvn1_vault::vaulted_collection {
     // ============================================
 
     /// Configuration for a vaulted NFT collection
-    /// Stored under the collection creator's address
+    /// Stored under the collection object's address
     struct VaultedCollectionConfig has key {
-        /// Address of the collection object
-        collection_addr: address,
         /// Creator royalty in basis points (10000 = 100%)
         creator_royalty_bps: u16,
         /// Vault top-up royalty in basis points (from secondary sales)
@@ -153,8 +151,6 @@ module cvn1_vault::vaulted_collection {
         allowed_assets: vector<address>,
         creator_payout_addr: address
     ) {
-        let creator_addr = signer::address_of(creator);
-        
         // Validate royalty basis points (for secondary sales)
         assert!(
             (creator_royalty_bps as u64) + (vault_royalty_bps as u64) <= MAX_BPS,
@@ -164,11 +160,8 @@ module cvn1_vault::vaulted_collection {
         // Validate mint vault bps
         assert!((mint_vault_bps as u64) <= MAX_BPS, EINVALID_ROYALTY_BPS);
         
-        // Validate no existing collection config
-        assert!(!exists<VaultedCollectionConfig>(creator_addr), ECOLLECTION_ALREADY_EXISTS);
-        
-        // Create unlimited collection
-        collection::create_unlimited_collection(
+        // Create unlimited collection and get constructor ref
+        let constructor_ref = collection::create_unlimited_collection(
             creator,
             collection_description,
             collection_name,
@@ -176,12 +169,10 @@ module cvn1_vault::vaulted_collection {
             collection_uri,
         );
         
-        // Derive collection address
-        let collection_addr = collection::create_collection_address(&creator_addr, &collection_name);
+        let collection_signer = object::generate_signer(&constructor_ref);
         
-        // Store collection config under creator
-        move_to(creator, VaultedCollectionConfig {
-            collection_addr,
+        // Store collection config under the collection object
+        move_to(&collection_signer, VaultedCollectionConfig {
             creator_royalty_bps,
             vault_royalty_bps,
             mint_vault_bps,
@@ -201,6 +192,7 @@ module cvn1_vault::vaulted_collection {
     public entry fun creator_mint_vaulted_nft(
         creator: &signer,
         buyer: &signer,
+        collection_addr: address,
         to: address,
         name: String,
         description: String,
@@ -209,11 +201,12 @@ module cvn1_vault::vaulted_collection {
     ) acquires VaultedCollectionConfig, VaultInfo {
         let creator_addr = signer::address_of(creator);
         let _buyer_addr = signer::address_of(buyer);
-        assert!(exists<VaultedCollectionConfig>(creator_addr), ECONFIG_NOT_FOUND);
-        let config = borrow_global<VaultedCollectionConfig>(creator_addr);
+        
+        assert!(exists<VaultedCollectionConfig>(collection_addr), ECONFIG_NOT_FOUND);
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
         
         // Get collection info
-        let collection_obj = object::address_to_object<Collection>(config.collection_addr);
+        let collection_obj = object::address_to_object<Collection>(collection_addr);
         let collection_name = collection::name(collection_obj);
         
         // Store config values
@@ -221,7 +214,7 @@ module cvn1_vault::vaulted_collection {
         let mint_vault_bps = config.mint_vault_bps;
         let mint_price_fa_addr = config.mint_price_fa;
         let creator_payout = config.creator_payout_addr;
-        let collection_addr_copy = config.collection_addr;
+        let collection_addr_copy = collection_addr;
         
         // Create the NFT
         let constructor_ref = token::create_named_token(
@@ -300,19 +293,20 @@ module cvn1_vault::vaulted_collection {
     /// wants to mint NFTs to themselves without payment handling.
     public entry fun creator_self_mint(
         creator: &signer,
+        collection_addr: address,
         name: String,
         description: String,
         uri: String,
         is_redeemable: bool
     ) acquires VaultedCollectionConfig {
         let creator_addr = signer::address_of(creator);
-        assert!(exists<VaultedCollectionConfig>(creator_addr), ECONFIG_NOT_FOUND);
-        let config = borrow_global<VaultedCollectionConfig>(creator_addr);
+        assert!(exists<VaultedCollectionConfig>(collection_addr), ECONFIG_NOT_FOUND);
+        let _config = borrow_global<VaultedCollectionConfig>(collection_addr);
         
         // Get collection info
-        let collection_obj = object::address_to_object<Collection>(config.collection_addr);
+        let collection_obj = object::address_to_object<Collection>(collection_addr);
         let collection_name = collection::name(collection_obj);
-        let collection_addr_copy = config.collection_addr;
+        let collection_addr_copy = collection_addr;
         
         // Create the NFT
         let constructor_ref = token::create_named_token(
@@ -355,6 +349,109 @@ module cvn1_vault::vaulted_collection {
         });
     }
 
+    /// Public mint function - buyer pays and mints from a creator's collection
+    /// 
+    /// This is the recommended mint function for production use. Only the buyer
+    /// needs to sign. The creator's collection config determines pricing and vault split.
+    /// 
+    /// # Arguments
+    /// * `buyer` - The signer who pays and receives the NFT
+    /// * `creator_addr` - Address of the collection creator (to look up config)
+    /// * `name` - Unique name for the NFT within the collection
+    /// * `description` - NFT description
+    /// * `uri` - NFT metadata URI
+    /// * `is_redeemable` - Whether the vault can be burned to redeem contents
+    public entry fun public_mint(
+        buyer: &signer,
+        collection_addr: address,
+        name: String,
+        description: String,
+        uri: String,
+        is_redeemable: bool
+    ) acquires VaultedCollectionConfig, VaultInfo {
+        let buyer_addr = signer::address_of(buyer);
+        assert!(exists<VaultedCollectionConfig>(collection_addr), ECONFIG_NOT_FOUND);
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
+        
+        // Get collection info
+        let collection_obj = object::address_to_object<Collection>(collection_addr);
+        let collection_name = collection::name(collection_obj);
+        let creator_addr = collection::creator(collection_obj);
+        
+        // Store config values before borrowing ends
+        let mint_price = config.mint_price;
+        let mint_vault_bps = config.mint_vault_bps;
+        let mint_price_fa_addr = config.mint_price_fa;
+        let creator_payout = config.creator_payout_addr;
+        let collection_addr_copy = collection_addr;
+        
+        // For public minting, we need to use a numbered token (not named)
+        // since the creator isn't signing. Use create_numbered_token which
+        // generates a unique token address without requiring collection owner signature.
+        let constructor_ref = token::create_numbered_token(
+            buyer,
+            collection_name,
+            description,
+            name, // prefix
+            std::string::utf8(b""), // suffix
+            option::none(), // royalty
+            uri,
+        );
+        
+        let token_signer = object::generate_signer(&constructor_ref);
+        let nft_addr = object::address_from_constructor_ref(&constructor_ref);
+        
+        // Create refs for vault lifecycle management
+        let extend_ref = object::generate_extend_ref(&constructor_ref);
+        let delete_ref = object::generate_delete_ref(&constructor_ref);
+        let burn_ref = token::generate_burn_ref(&constructor_ref);
+        
+        // Initialize VaultInfo under the NFT address
+        move_to(&token_signer, VaultInfo {
+            is_redeemable,
+            vault_stores: smart_table::new(),
+            extend_ref,
+            delete_ref: option::some(delete_ref),
+            burn_ref,
+            creator_addr,
+            last_sale_compliant: false,
+        });
+        
+        // Handle mint payment if price > 0
+        if (mint_price > 0 && mint_price_fa_addr != @0x0) {
+            let fa_metadata = object::address_to_object<Metadata>(mint_price_fa_addr);
+            
+            // Calculate split
+            let vault_seed = math64::mul_div(mint_price, (mint_vault_bps as u64), MAX_BPS);
+            let creator_cut = mint_price - vault_seed;
+            
+            // Withdraw from buyer
+            let payment = primary_fungible_store::withdraw(buyer, fa_metadata, mint_price);
+            
+            // Pay creator
+            if (creator_cut > 0) {
+                let creator_payment = fungible_asset::extract(&mut payment, creator_cut);
+                primary_fungible_store::deposit(creator_payout, creator_payment);
+            };
+            
+            // Seed vault with remainder
+            if (vault_seed > 0) {
+                deposit_fa_to_vault(nft_addr, fa_metadata, payment);
+            } else {
+                fungible_asset::destroy_zero(payment);
+            };
+        };
+        
+        // Emit minted event
+        event::emit(VaultedNFTMinted {
+            nft_object_addr: nft_addr,
+            collection_addr: collection_addr_copy,
+            creator: creator_addr,
+            recipient: buyer_addr,
+            is_redeemable,
+        });
+    }
+
     /// Deposit fungible assets into an NFT's vault
     public entry fun deposit_to_vault(
         depositor: &signer,
@@ -371,13 +468,13 @@ module cvn1_vault::vaulted_collection {
         let depositor_addr = signer::address_of(depositor);
         let fa_addr = object::object_address(&fa_metadata);
         
-        // Get vault info to check allowlist
-        let vault_info = borrow_global<VaultInfo>(nft_addr);
-        let creator_addr = vault_info.creator_addr;
+        // Get collection addr to check allowlist
+        let collection = token::collection_object(nft_object);
+        let collection_addr = object::object_address(&collection);
         
         // Check allowlist if configured
-        if (exists<VaultedCollectionConfig>(creator_addr)) {
-            let config = borrow_global<VaultedCollectionConfig>(creator_addr);
+        if (exists<VaultedCollectionConfig>(collection_addr)) {
+            let config = borrow_global<VaultedCollectionConfig>(collection_addr);
             if (!vector::is_empty(&config.allowed_assets)) {
                 assert!(vector::contains(&config.allowed_assets, &fa_addr), EASSET_NOT_ALLOWED);
             };
@@ -494,13 +591,14 @@ module cvn1_vault::vaulted_collection {
         let nft_addr = object::object_address(&nft_object);
         assert!(exists<VaultInfo>(nft_addr), EVAULT_NOT_FOUND);
         
-        let vault_info = borrow_global<VaultInfo>(nft_addr);
-        let creator_addr = vault_info.creator_addr;
         let current_owner = object::owner(nft_object);
         
         // Get collection config
-        assert!(exists<VaultedCollectionConfig>(creator_addr), ECONFIG_NOT_FOUND);
-        let config = borrow_global<VaultedCollectionConfig>(creator_addr);
+        let collection = token::collection_object(nft_object);
+        let collection_addr = object::object_address(&collection);
+        
+        assert!(exists<VaultedCollectionConfig>(collection_addr), ECONFIG_NOT_FOUND);
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
         
         // Calculate splits using overflow-safe math
         let creator_cut = math64::mul_div(gross_amount, (config.creator_royalty_bps as u64), MAX_BPS);
@@ -628,9 +726,9 @@ module cvn1_vault::vaulted_collection {
 
     #[view]
     /// Get collection configuration
-    public fun get_vault_config(creator_addr: address): (u16, u16, vector<address>, address) acquires VaultedCollectionConfig {
-        assert!(exists<VaultedCollectionConfig>(creator_addr), ECONFIG_NOT_FOUND);
-        let config = borrow_global<VaultedCollectionConfig>(creator_addr);
+    public fun get_vault_config(collection_addr: address): (u16, u16, vector<address>, address) acquires VaultedCollectionConfig {
+        assert!(exists<VaultedCollectionConfig>(collection_addr), ECONFIG_NOT_FOUND);
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
         (
             config.creator_royalty_bps,
             config.vault_royalty_bps,

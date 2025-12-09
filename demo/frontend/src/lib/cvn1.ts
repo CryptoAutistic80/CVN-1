@@ -1,7 +1,7 @@
 import { Cedra, CedraConfig, Network } from "@cedra-labs/ts-sdk";
 
 // CVN-1 Contract address on testnet
-export const CVN1_ADDRESS = "0xdd8a5cf89985a6d8bb4f91c7b943d2bdbc2faae400aa6737e877feb68369f926";
+export const CVN1_ADDRESS = "0xd6806376a10362feac1b9c64dbc28bea0485c35cca171b345178137e0e3b6193";
 export const MODULE_NAME = "vaulted_collection";
 
 // Initialize Cedra client for testnet
@@ -14,6 +14,8 @@ export interface VaultConfig {
     vaultRoyaltyBps: number;
     allowedAssets: string[];
     creatorPayoutAddr: string;
+    mintVaultBps: number;
+    mintPrice: number;
 }
 
 export interface VaultBalance {
@@ -37,22 +39,23 @@ export async function vaultExists(nftAddr: string): Promise<boolean> {
     }
 }
 
-export async function getVaultConfig(creatorAddr: string): Promise<VaultConfig | null> {
+export async function getVaultConfig(collectionAddr: string): Promise<VaultConfig | null> {
     try {
-        const result = await cedra.view({
-            payload: {
-                function: `${CVN1_ADDRESS}::${MODULE_NAME}::get_vault_config`,
-                typeArguments: [],
-                functionArguments: [creatorAddr],
-            },
+        const resource = await cedra.getAccountResource({
+            accountAddress: collectionAddr,
+            resourceType: `${CVN1_ADDRESS}::${MODULE_NAME}::VaultedCollectionConfig`
         });
+        const data = resource as any;
         return {
-            creatorRoyaltyBps: Number(result[0]),
-            vaultRoyaltyBps: Number(result[1]),
-            allowedAssets: result[2] as string[],
-            creatorPayoutAddr: result[3] as string,
+            creatorRoyaltyBps: Number(data.creator_royalty_bps),
+            vaultRoyaltyBps: Number(data.vault_royalty_bps),
+            allowedAssets: data.allowed_assets,
+            creatorPayoutAddr: data.creator_payout_addr,
+            mintVaultBps: Number(data.mint_vault_bps),
+            mintPrice: Number(data.mint_price),
         };
-    } catch {
+    } catch (e) {
+        console.warn("Failed to get vault config for", collectionAddr);
         return null;
     }
 }
@@ -122,5 +125,71 @@ export async function getWalletNfts(ownerAddr: string): Promise<NFT[]> {
     } catch (e) {
         console.error("Failed to fetch NFTs:", e);
         return [];
+    }
+}
+
+export async function getVaultedCollections(): Promise<string[]> {
+    try {
+        const query = `
+            query GetVaultedCollections {
+                move_resources(
+                    where: { type: { _ilike: "%::vaulted_collection::VaultedCollectionConfig" } }
+                    distinct_on: [address]
+                    order_by: { address: asc }
+                    limit: 50
+                ) {
+                    address
+                }
+            }
+        `;
+
+        const result = await cedra.queryIndexer({ query: { query } });
+        // @ts-ignore
+        return result.move_resources.map((r: any) => r.address);
+    } catch (e) {
+        console.error("Failed to fetch collections from indexer:", e);
+        return [];
+    }
+}
+
+export async function getCollectionDetails(addr: string): Promise<{ name: string; uri: string } | null> {
+    try {
+        // Fetch the 0x4::collection::Collection resource
+        const resource = await cedra.getAccountResource({
+            accountAddress: addr,
+            resourceType: "0x4::collection::Collection",
+        });
+
+        return {
+            name: (resource as any).name,
+            uri: (resource as any).uri,
+        };
+    } catch {
+        return null;
+    }
+}
+
+export async function getCollectionAddrFromTx(txHash: string): Promise<string | null> {
+    try {
+        const txn = await cedra.waitForTransaction({ transactionHash: txHash });
+        // @ts-ignore - types might be strict about changes
+        const changes = txn.changes;
+
+        for (const change of changes) {
+            if (change.type === "write_resource") {
+                // The SDK response structure for write_resource puts content in 'data', 
+                // but some versions might use 'resource'. We check both.
+                const data = (change as any).resource || (change as any).data;
+
+                if (data && data.type &&
+                    data.type.includes(`${CVN1_ADDRESS}::${MODULE_NAME}::VaultedCollectionConfig`)) {
+                    return (change as any).address;
+                }
+            }
+        }
+        return null;
+    } catch (e) {
+        console.error("Failed to parse tx for collection addr:", e);
+        return null;
     }
 }
