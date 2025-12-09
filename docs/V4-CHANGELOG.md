@@ -2,17 +2,25 @@
 
 ## Overview
 
-Version 4.1.0 adds **Collection Size Limits** and fixes the **Public Mint Bug**.
+Version 4.2.0 adds **Collection Size Limits** and fixes the **Public Mint Bug** with owner-based minting.
 
-## v4.1.0 Hotfix
+## v4.2.0 - Owner-Based Minting Fix
 
-Fixed `token::create_numbered_token` issue - it requires creator signer address to match `collection::creator()`. Solution: use `token::create` with manual numbering from `minted_count`.
+Fixed root cause: `token::create()` validates `collection::creator() == signer_address`, but our collection_signer has the collection object's address, not the creator's.
+
+**Solution:**
+- Transfer collection ownership to itself during `init_collection_config` using `TransferRef`
+- Use `token::create_token_as_collection_owner()` which validates `object::owner(collection) == signer_address`
+- Since collection owns itself, collection_signer can now mint
 
 **Changes:**
-- `public_mint` now uses `token::create` instead of `create_numbered_token`
-- Added `u64_to_string` helper for token numbering
-- Token names format: "Name #1", "Name #2", etc. (contract handles numbering)
-- Added 7 new minting tests (total: 35 tests)
+- `collection.move`: Added `generate_transfer_ref()` + `transfer_with_ref()` for self-ownership
+- `minting.move`: Uses `token::create_token_as_collection_owner()` with `Object<Collection>`
+
+## v4.1.0 Hotfix (Superseded)
+
+Attempted fix using `token::create()` with manual numbering - still failed due to creator validation.
+
 
 ## New Features
 
@@ -72,15 +80,15 @@ can_mint(collection_addr): bool
 
 ## Deployment
 
-**Contract Address (Testnet):** `0x0ce0283ba1806bb42a43f53679f9f668189ec6f1b6d13a7be706697a817c8646`
+**Contract Address (Testnet):** `0xf1f6a0689865e51853978f8c4279a58c9b9c0da91da82d29a33735998b1682ff`
 
-**Transaction:** [View on Cedrascan](https://cedrascan.com/txn/0x5cbf6dafaffce2945fdb0b1c26d0cd133a1263e861b14351035061f96b278933?network=testnet)
+**Transaction:** [View on Cedrascan](https://cedrascan.com/txn/0x46c770f3f5d0b2f271cfab52a368b478a474fec48c5207266fae1f1776e9f0a0?network=testnet)
 
-**Profile:** `cvn1-v4-fix`
+**Profile:** `cvn1-v42-deploy`
 
 **Deploy Command:**
 ```bash
-cedra move publish --profile cvn1-v4-fix --named-addresses cvn1_vault=cvn1-v4-fix
+cedra move publish --profile cvn1-v42-deploy --named-addresses cvn1_vault=cvn1-v42-deploy
 ```
 
 ---

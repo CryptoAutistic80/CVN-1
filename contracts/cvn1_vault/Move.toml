@@ -1,6 +1,6 @@
 [package]
 name = "cvn1_vault"
-version = "4.1.0"
+version = "4.2.0"
 authors = ["Singularity Shift Ltd"]
 license = "Proprietary"
 

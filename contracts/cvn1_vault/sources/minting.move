@@ -201,10 +201,11 @@ module cvn1_vault::minting {
         
         // Get collection info
         let collection_obj = object::address_to_object<Collection>(collection_addr);
-        let collection_name = collection::name(collection_obj);
+        let _collection_name = collection::name(collection_obj);
         let creator_addr = collection::creator(collection_obj);
         
         // Get collection signer for token creation (v4 fix)
+        // The collection owns itself, so collection_signer is the owner
         let collection_signer = vault_core::get_collection_signer(collection_addr);
         
         // Get current minted count for numbering (before increment)
@@ -216,10 +217,11 @@ module cvn1_vault::minting {
         string::append(&mut token_name, string::utf8(b"#"));
         string::append(&mut token_name, u64_to_string(token_number));
         
-        // Use token::create with collection signer - creates unique object
-        let constructor_ref = token::create(
+        // Use create_token_as_collection_owner - validates owner(collection) == signer
+        // Since we transferred collection ownership to itself, collection_signer is the owner
+        let constructor_ref = token::create_token_as_collection_owner(
             &collection_signer,
-            collection_name,
+            collection_obj,  // Pass Object<Collection> directly
             description,
             token_name,
             option::none(), // royalty
