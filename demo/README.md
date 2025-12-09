@@ -1,58 +1,49 @@
-# CVN-1 Demo Platform
+# CVN-1 v3 Demo
 
-A demo app showcasing the CVN-1 Vaulted NFT Standard with 3 mint strategies.
+A demo app showcasing the CVN-1 v3 Dual Vault NFT Standard.
 
 ## Quick Start
 
-### 1. Start Backend
 ```bash
-cargo run
-# Runs on http://127.0.0.1:8080
-```
-
-### 2. Start Frontend
-```bash
-cd demo/frontend
+cd frontend
 npm run dev
 # Runs on http://localhost:3000
 ```
 
-### 3. Open Browser
-Visit [http://localhost:3000](http://localhost:3000)
+## Features
 
-## Demo Strategies
+| Feature | Description |
+|---------|-------------|
+| 🔒 Core Vault | Long-term value, burn to redeem |
+| 🎁 Rewards Vault | Short-term, claim anytime |
+| ⚡ Mint | Seed goes to Core Vault |
+| � Royalties | Sales grow Rewards Vault |
+| 🔥 Burn & Redeem | Get both vaults at once |
 
-| # | Strategy | Mint Price | Vault % | Demo |
-|---|----------|------------|---------|------|
-| 🎨 | Premium Art | 100 CEDRA | 100% | Full mint → vault |
-| 🚀 | PFP Collection | 50 CEDRA | 50% | Split: creator + vault |
-| 🏦 | Piggy Bank | FREE | 0% | Empty mint + deposits |
+## Pages
 
-## API Endpoints
-
-| Endpoint | Method | Description |
-|----------|--------|-------------|
-| `/health` | GET | Health check |
-| `/api/mint` | POST | Mint a vaulted NFT |
-| `/api/vault/{nft}` | GET | Get vault balances |
-| `/api/config/{creator}` | GET | Get collection config |
+| Page | Path | Description |
+|------|------|-------------|
+| Home | `/` | Overview and nav |
+| Create | `/create` | Deploy a collection |
+| Mint | `/mint` | Mint NFTs |
+| Explore | `/explore` | View vaults, claim, burn |
 
 ## Architecture
 
 ```
-Frontend (Next.js)  ◄── REST ──►  Backend (Rust)
-        │                              │
-        │ GraphQL                      │ REST
-        ▼                              ▼
-   Cedra Indexer              Cedra Testnet
+Frontend (Next.js 16) ──► Cedra Testnet
+        │
+        ▼
+   Cedra Indexer
 ```
 
-## Tech Stack
+## Contract
 
-- **Frontend**: Next.js 16, React 18, Tailwind CSS
-- **Backend**: Rust, Actix-web 4, reqwest
-- **Blockchain**: Cedra Testnet
+```
+0x64650d57ef213323ea49c8d9b0eefc6c9d6c108b24b747c8cc2e1317a5907855
+```
 
 ---
 
-*Built for CVN-1: The Cedra Vaulted NFT Standard*
+*CVN-1 v3: Dual Vault Architecture*
