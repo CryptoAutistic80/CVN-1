@@ -105,7 +105,7 @@ module cvn1_vault::minting {
             // payment currency, which is set by the creator. The allowlist only
             // restricts external deposits via vault_ops::deposit_to_vault.
             if (vault_seed > 0) {
-                vault_core::deposit_to_vault(nft_addr, fa_metadata, payment);
+                vault_core::deposit_to_core_vault(nft_addr, fa_metadata, payment);
             } else {
                 fungible_asset::destroy_zero(payment);
             };
@@ -250,7 +250,7 @@ module cvn1_vault::minting {
             // payment currency, which is set by the creator. The allowlist only
             // restricts external deposits via vault_ops::deposit_to_vault.
             if (vault_seed > 0) {
-                vault_core::deposit_to_vault(nft_addr, fa_metadata, payment);
+                vault_core::deposit_to_core_vault(nft_addr, fa_metadata, payment);
             } else {
                 fungible_asset::destroy_zero(payment);
             };

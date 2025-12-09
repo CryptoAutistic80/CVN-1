@@ -91,21 +91,45 @@ module cvn1_vault::vault_core {
         creator_payout_addr: address,
     }
 
-    /// Per-NFT vault information
+    /// Per-NFT vault information (v3: Dual Vault Architecture)
     /// Stored under the NFT's object address
+    /// 
+    /// Core Vault: Long-term value (mint seed, staking rewards, loyalty)
+    ///             - Only accessible via burn_and_redeem
+    /// Rewards Vault: Short-term value (royalties, gaming wins, activities)
+    ///             - Accessible via claim_rewards (keeps NFT) or burn_and_redeem
     struct VaultInfo has key {
-        /// Whether the vault can be burned and redeemed
-        is_redeemable: bool,
-        /// Maps FA metadata address -> store object address
-        vault_stores: SmartTable<address, address>,
-        /// Maps FA metadata address -> store DeleteRef for cleanup
-        store_delete_refs: SmartTable<address, DeleteRef>,
+        // ============================================
+        // Core Vault (burn-to-redeem only)
+        // ============================================
+        /// Maps FA metadata address -> store object address for core vault
+        core_stores: SmartTable<address, address>,
+        /// Maps FA metadata address -> store DeleteRef for core vault cleanup
+        core_delete_refs: SmartTable<address, DeleteRef>,
+        /// Whether the core vault can be burned and redeemed
+        is_core_redeemable: bool,
+        
+        // ============================================
+        // Rewards Vault (claim anytime)
+        // ============================================
+        /// Maps FA metadata address -> store object address for rewards vault
+        rewards_stores: SmartTable<address, address>,
+        /// Maps FA metadata address -> store DeleteRef for rewards vault cleanup
+        rewards_delete_refs: SmartTable<address, DeleteRef>,
+        
+        // ============================================
+        // Object Lifecycle References
+        // ============================================
         /// Reference for extending vault object capabilities
         extend_ref: ExtendRef,
         /// Reference for cleanup on burn+redeem (optional - named tokens may not support deletion)
         delete_ref: Option<DeleteRef>,
         /// Reference for burning the token
         burn_ref: BurnRef,
+        
+        // ============================================
+        // Metadata
+        // ============================================
         /// Address of the collection creator (for config lookup)
         creator_addr: address,
         /// Track if last sale used vault royalty
@@ -177,17 +201,17 @@ module cvn1_vault::vault_core {
     // Vault Read Functions (return copied values)
     // ============================================
 
-    /// Get vault info for views
+    /// Get vault info for views (v3: returns core redeemable status)
     public fun get_vault_info_for_view(addr: address): (bool, address, bool)
     acquires VaultInfo {
         let vault = borrow_global<VaultInfo>(addr);
-        (vault.is_redeemable, vault.creator_addr, vault.last_sale_compliant)
+        (vault.is_core_redeemable, vault.creator_addr, vault.last_sale_compliant)
     }
 
-    /// Check if vault is redeemable
+    /// Check if core vault is redeemable
     public fun is_vault_redeemable(addr: address): bool acquires VaultInfo {
         let vault = borrow_global<VaultInfo>(addr);
-        vault.is_redeemable
+        vault.is_core_redeemable
     }
 
     /// Get vault compliance status
@@ -196,8 +220,8 @@ module cvn1_vault::vault_core {
         vault.last_sale_compliant
     }
 
-    /// Get vault balances for views
-    public fun get_vault_balances(nft_addr: address): vector<VaultBalance> acquires VaultInfo {
+    /// Get CORE vault balances for views
+    public fun get_core_vault_balances(nft_addr: address): vector<VaultBalance> acquires VaultInfo {
         let balances = vector::empty<VaultBalance>();
         
         if (!exists<VaultInfo>(nft_addr)) {
@@ -205,13 +229,13 @@ module cvn1_vault::vault_core {
         };
         
         let vault_info = borrow_global<VaultInfo>(nft_addr);
-        let keys = smart_table::keys(&vault_info.vault_stores);
+        let keys = smart_table::keys(&vault_info.core_stores);
         let i = 0;
         let len = vector::length(&keys);
         
         while (i < len) {
             let fa_addr = *vector::borrow(&keys, i);
-            let store_addr = *smart_table::borrow(&vault_info.vault_stores, fa_addr);
+            let store_addr = *smart_table::borrow(&vault_info.core_stores, fa_addr);
             let store = object::address_to_object<FungibleStore>(store_addr);
             let balance = fungible_asset::balance(store);
             
@@ -223,6 +247,51 @@ module cvn1_vault::vault_core {
         };
         
         balances
+    }
+
+    /// Get REWARDS vault balances for views
+    public fun get_rewards_vault_balances(nft_addr: address): vector<VaultBalance> acquires VaultInfo {
+        let balances = vector::empty<VaultBalance>();
+        
+        if (!exists<VaultInfo>(nft_addr)) {
+            return balances
+        };
+        
+        let vault_info = borrow_global<VaultInfo>(nft_addr);
+        let keys = smart_table::keys(&vault_info.rewards_stores);
+        let i = 0;
+        let len = vector::length(&keys);
+        
+        while (i < len) {
+            let fa_addr = *vector::borrow(&keys, i);
+            let store_addr = *smart_table::borrow(&vault_info.rewards_stores, fa_addr);
+            let store = object::address_to_object<FungibleStore>(store_addr);
+            let balance = fungible_asset::balance(store);
+            
+            vector::push_back(&mut balances, VaultBalance {
+                fa_metadata_addr: fa_addr,
+                balance,
+            });
+            i = i + 1;
+        };
+        
+        balances
+    }
+
+    /// Get combined vault balances (core + rewards) for backwards compatibility
+    public fun get_vault_balances(nft_addr: address): vector<VaultBalance> acquires VaultInfo {
+        let core = get_core_vault_balances(nft_addr);
+        let rewards = get_rewards_vault_balances(nft_addr);
+        
+        // Append rewards to core
+        let i = 0;
+        let len = vector::length(&rewards);
+        while (i < len) {
+            vector::push_back(&mut core, *vector::borrow(&rewards, i));
+            i = i + 1;
+        };
+        
+        core
     }
 
     // ============================================
@@ -267,22 +336,31 @@ module cvn1_vault::vault_core {
         });
     }
 
-    /// Create and store a new VaultInfo
+    /// Create and store a new VaultInfo (v3: Dual Vault)
     public(friend) fun create_and_store_vault(
         signer: &signer,
-        is_redeemable: bool,
+        is_core_redeemable: bool,
         extend_ref: ExtendRef,
         delete_ref: Option<DeleteRef>,
         burn_ref: BurnRef,
         creator_addr: address,
     ) {
         move_to(signer, VaultInfo {
-            is_redeemable,
-            vault_stores: smart_table::new(),
-            store_delete_refs: smart_table::new(),
+            // Core vault (long-term, burn-to-redeem)
+            core_stores: smart_table::new(),
+            core_delete_refs: smart_table::new(),
+            is_core_redeemable,
+            
+            // Rewards vault (short-term, claim anytime)
+            rewards_stores: smart_table::new(),
+            rewards_delete_refs: smart_table::new(),
+            
+            // Object lifecycle
             extend_ref,
             delete_ref,
             burn_ref,
+            
+            // Metadata
             creator_addr,
             last_sale_compliant: false,
         });
@@ -292,13 +370,13 @@ module cvn1_vault::vault_core {
     // Vault Mutation Functions (friend-only)
     // ============================================
 
-    /// Deposit FA into vault (creates store if needed)
+    /// Deposit FA into CORE vault (creates store if needed)
     /// 
-    /// This is the INTERNAL deposit function for use by friend modules only.
-    /// It does NOT check the allowlist - that check is handled by the public
-    /// entry point `vault_ops::deposit_to_vault`. Protocol flows (minting,
-    /// royalty settlement) intentionally bypass the allowlist.
-    public(friend) fun deposit_to_vault(
+    /// Core vault is for long-term value: mint seed, staking rewards, loyalty.
+    /// Only redeemable via burn_and_redeem (destroys NFT).
+    /// 
+    /// This is an INTERNAL function - allowlist check handled by vault_ops.
+    public(friend) fun deposit_to_core_vault(
         nft_addr: address,
         fa_metadata: Object<Metadata>,
         fa: FungibleAsset
@@ -307,22 +385,53 @@ module cvn1_vault::vault_core {
         let vault_info = borrow_global_mut<VaultInfo>(nft_addr);
         
         // Create store if needed
-        if (!smart_table::contains(&vault_info.vault_stores, fa_addr)) {
+        if (!smart_table::contains(&vault_info.core_stores, fa_addr)) {
             let vault_signer = object::generate_signer_for_extending(&vault_info.extend_ref);
             let store_constructor = object::create_object_from_account(&vault_signer);
             
-            // Generate DeleteRef before creating the store
             let store_delete_ref = object::generate_delete_ref(&store_constructor);
-            
             let store = fungible_asset::create_store(&store_constructor, fa_metadata);
             let store_addr = object::object_address(&store);
             
-            smart_table::add(&mut vault_info.vault_stores, fa_addr, store_addr);
-            smart_table::add(&mut vault_info.store_delete_refs, fa_addr, store_delete_ref);
+            smart_table::add(&mut vault_info.core_stores, fa_addr, store_addr);
+            smart_table::add(&mut vault_info.core_delete_refs, fa_addr, store_delete_ref);
         };
         
         // Deposit
-        let store_addr = *smart_table::borrow(&vault_info.vault_stores, fa_addr);
+        let store_addr = *smart_table::borrow(&vault_info.core_stores, fa_addr);
+        let store = object::address_to_object<FungibleStore>(store_addr);
+        fungible_asset::deposit(store, fa);
+    }
+
+    /// Deposit FA into REWARDS vault (creates store if needed)
+    /// 
+    /// Rewards vault is for short-term value: royalties, gaming wins, activities.
+    /// Claimable anytime via claim_rewards (keeps NFT) or included in burn_and_redeem.
+    /// 
+    /// This is an INTERNAL function - allowlist check handled by vault_ops.
+    public(friend) fun deposit_to_rewards_vault(
+        nft_addr: address,
+        fa_metadata: Object<Metadata>,
+        fa: FungibleAsset
+    ) acquires VaultInfo {
+        let fa_addr = object::object_address(&fa_metadata);
+        let vault_info = borrow_global_mut<VaultInfo>(nft_addr);
+        
+        // Create store if needed
+        if (!smart_table::contains(&vault_info.rewards_stores, fa_addr)) {
+            let vault_signer = object::generate_signer_for_extending(&vault_info.extend_ref);
+            let store_constructor = object::create_object_from_account(&vault_signer);
+            
+            let store_delete_ref = object::generate_delete_ref(&store_constructor);
+            let store = fungible_asset::create_store(&store_constructor, fa_metadata);
+            let store_addr = object::object_address(&store);
+            
+            smart_table::add(&mut vault_info.rewards_stores, fa_addr, store_addr);
+            smart_table::add(&mut vault_info.rewards_delete_refs, fa_addr, store_delete_ref);
+        };
+        
+        // Deposit
+        let store_addr = *smart_table::borrow(&vault_info.rewards_stores, fa_addr);
         let store = object::address_to_object<FungibleStore>(store_addr);
         fungible_asset::deposit(store, fa);
     }
@@ -340,6 +449,41 @@ module cvn1_vault::vault_core {
         vector::contains(&config.allowed_assets, &fa_addr)
     }
 
+    /// Withdraw all rewards vault contents to owner (for claim_rewards)
+    /// Returns vector of FA addresses that were claimed
+    public(friend) fun withdraw_rewards_vault(
+        nft_addr: address,
+        owner_addr: address
+    ): vector<address> acquires VaultInfo {
+        use cedra_framework::primary_fungible_store;
+        
+        let vault_info = borrow_global_mut<VaultInfo>(nft_addr);
+        let vault_signer = object::generate_signer_for_extending(&vault_info.extend_ref);
+        
+        let claimed_assets = vector::empty<address>();
+        let keys = smart_table::keys(&vault_info.rewards_stores);
+        let i = 0;
+        let len = vector::length(&keys);
+        
+        while (i < len) {
+            let fa_addr = *vector::borrow(&keys, i);
+            let store_addr = *smart_table::borrow(&vault_info.rewards_stores, fa_addr);
+            let store = object::address_to_object<FungibleStore>(store_addr);
+            
+            let balance = fungible_asset::balance(store);
+            if (balance > 0) {
+                let fa = fungible_asset::withdraw(&vault_signer, store, balance);
+                primary_fungible_store::deposit(owner_addr, fa);
+                vector::push_back(&mut claimed_assets, fa_addr);
+            };
+            // Note: We keep empty stores for potential future deposits
+            
+            i = i + 1;
+        };
+        
+        claimed_assets
+    }
+
     /// Set vault compliance status
     public(friend) fun set_vault_compliance(nft_addr: address, compliant: bool) acquires VaultInfo {
         let vault = borrow_global_mut<VaultInfo>(nft_addr);
@@ -347,19 +491,24 @@ module cvn1_vault::vault_core {
     }
 
     /// Move vault out for burn_and_redeem (destructive)
-    /// Returns: (extend_ref, burn_ref, delete_ref, vault_stores, store_delete_refs)
+    /// Returns: (extend_ref, burn_ref, delete_ref, core_stores, core_delete_refs, rewards_stores, rewards_delete_refs)
     /// delete_ref may be None for named tokens that don't support deletion
+    /// Note: burn_and_redeem should withdraw from BOTH vaults before burning
     public(friend) fun extract_vault_for_redeem(nft_addr: address): (
         ExtendRef, 
         BurnRef, 
         Option<DeleteRef>, 
-        SmartTable<address, address>,
-        SmartTable<address, DeleteRef>
+        SmartTable<address, address>,  // core_stores
+        SmartTable<address, DeleteRef>, // core_delete_refs
+        SmartTable<address, address>,  // rewards_stores
+        SmartTable<address, DeleteRef>  // rewards_delete_refs
     ) acquires VaultInfo {
         let VaultInfo {
-            is_redeemable: _,
-            vault_stores,
-            store_delete_refs,
+            core_stores,
+            core_delete_refs,
+            is_core_redeemable: _,
+            rewards_stores,
+            rewards_delete_refs,
             extend_ref,
             delete_ref,
             burn_ref,
@@ -367,6 +516,6 @@ module cvn1_vault::vault_core {
             last_sale_compliant: _,
         } = move_from<VaultInfo>(nft_addr);
         
-        (extend_ref, burn_ref, delete_ref, vault_stores, store_delete_refs)
+        (extend_ref, burn_ref, delete_ref, core_stores, core_delete_refs, rewards_stores, rewards_delete_refs)
     }
 }

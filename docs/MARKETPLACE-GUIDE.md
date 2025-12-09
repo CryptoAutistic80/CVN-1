@@ -1,12 +1,12 @@
-# CVN-1 Marketplace Integration Guide
+# CVN-1 Marketplace Integration Guide (v3)
 
 > How marketplaces can support CVN-1 vaulted NFTs with compliant royalty settlement.
 
 ## Overview
 
-CVN-1 provides a standardized sale path that ensures royalties are properly split between:
+CVN-1 v3 provides a standardized sale path with **dual vaults**:
 1. **Creator** — Direct payment to creator's payout address
-2. **Vault** — Deposited into the NFT's vault (increasing floor value)
+2. **Rewards Vault** — Royalties deposited (owner can claim anytime)
 3. **Seller** — Net proceeds to the current owner
 
 ## Why Integrate CVN-1?
@@ -31,7 +31,7 @@ CVN-1 provides a standardized sale path that ensures royalties are properly spli
 │     ↓                                                            │
 │  4. CVN-1 atomically:                                           │
 │     • Creator gets 2.5 CEDRA (2.5% royalty)                     │
-│     • Vault gets 2.5 CEDRA (2.5% vault royalty)                 │
+│     • REWARDS vault gets 2.5 CEDRA (claimable!)                 │
 │     • Seller gets 95 CEDRA (net proceeds)                       │
 │     • NFT transfers to buyer                                    │
 │     • Compliance flag set to TRUE                               │
@@ -65,26 +65,24 @@ Show users the vault contents when viewing an NFT:
 
 ```typescript
 async function getListingInfo(nftAddr: string) {
-  const summary = await cedra.view({
+  // Get separate vault balances
+  const coreBalances = await cedra.view({
     payload: {
-      function: `${CVN1_ADDRESS}::vault_views::get_vault_summary`,
+      function: `${CVN1_ADDRESS}::vault_views::get_core_vault_balances`,
       functionArguments: [nftAddr],
     },
   });
 
-  const balances = await cedra.view({
+  const rewardsBalances = await cedra.view({
     payload: {
-      function: `${CVN1_ADDRESS}::vault_views::get_vault_balances`,
+      function: `${CVN1_ADDRESS}::vault_views::get_rewards_vault_balances`,
       functionArguments: [nftAddr],
     },
   });
 
   return {
-    assetCount: Number(summary[0]),
-    totalAssetTypes: Number(summary[1]),
-    isRedeemable: summary[2] as boolean,
-    lastSaleCompliant: summary[3] as boolean,
-    balances: balances[0] as { fa_metadata_addr: string; balance: string }[],
+    coreBalances: coreBalances[0] as { fa_metadata_addr: string; balance: string }[],
+    rewardsBalances: rewardsBalances[0] as { fa_metadata_addr: string; balance: string }[],
   };
 }
 ```

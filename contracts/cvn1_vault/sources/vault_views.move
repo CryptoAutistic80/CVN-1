@@ -14,10 +14,24 @@ module cvn1_vault::vault_views {
     // ============================================
 
     #[view]
-    /// Get all vault balances for an NFT
+    /// Get all vault balances for an NFT (combined core + rewards)
     /// Returns vector of VaultBalance structs with fa_metadata_address and balance
     public fun get_vault_balances(nft_addr: address): vector<VaultBalance> {
         vault_core::get_vault_balances(nft_addr)
+    }
+
+    #[view]
+    /// Get CORE vault balances for an NFT (long-term value)
+    /// Only redeemable via burn_and_redeem
+    public fun get_core_vault_balances(nft_addr: address): vector<VaultBalance> {
+        vault_core::get_core_vault_balances(nft_addr)
+    }
+
+    #[view]
+    /// Get REWARDS vault balances for an NFT (short-term value)
+    /// Claimable anytime via claim_rewards
+    public fun get_rewards_vault_balances(nft_addr: address): vector<VaultBalance> {
+        vault_core::get_rewards_vault_balances(nft_addr)
     }
 
     #[view]

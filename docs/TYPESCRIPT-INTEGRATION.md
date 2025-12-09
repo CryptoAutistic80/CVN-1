@@ -1,6 +1,6 @@
-# CVN-1 TypeScript Integration Guide
+# CVN-1 TypeScript Integration Guide (v3)
 
-> Examples using `@cedra-labs/ts-sdk` to interact with CVN-1 vaulted NFTs.
+> Examples using `@cedra-labs/ts-sdk` to interact with CVN-1 dual vault NFTs.
 
 ## Setup
 
@@ -10,8 +10,7 @@ import { Cedra, CedraConfig, Account, Network } from "@cedra-labs/ts-sdk";
 const config = new CedraConfig({ network: Network.TESTNET });
 const cedra = new Cedra(config);
 
-// Your deployed CVN-1 module address
-const CVN1_ADDRESS = "0x...";
+const CVN1_ADDRESS = "0x..."; // Your deployed CVN-1 address
 ```
 
 ## Creating a Collection
@@ -23,27 +22,23 @@ async function createCollection(creator: Account) {
     data: {
       function: `${CVN1_ADDRESS}::collection::init_collection_config`,
       functionArguments: [
-        "My Vaulted Collection",      // name
-        "A collection with vaults",   // description
-        "https://example.com/meta",   // uri
-        250,                          // creator_royalty_bps (2.5%)
-        250,                          // vault_royalty_bps (2.5%)
-        5000,                         // mint_vault_bps (50% to vault)
-        1000000,                      // mint_price (1 CEDRA)
-        "0x1::cedra_coin::CedraCoin", // mint_price_fa (CEDRA)
-        [],                           // allowed_assets (empty = any)
-        creator.accountAddress,       // creator_payout_addr
+        "My Vaulted Collection",
+        "A collection with dual vaults",
+        "https://example.com/meta",
+        250,   // creator_royalty_bps (2.5%)
+        250,   // vault_royalty_bps (2.5% → rewards vault)
+        5000,  // mint_vault_bps (50% → core vault)
+        1000000,
+        "0x1::cedra_coin::CedraCoin",
+        [],
+        creator.accountAddress,
       ],
     },
   });
 
-  const result = await cedra.signAndSubmitTransaction({ 
-    signer: creator, 
-    transaction: txn 
-  });
+  const result = await cedra.signAndSubmitTransaction({ signer: creator, transaction: txn });
   await cedra.waitForTransaction({ transactionHash: result.hash });
   
-  // Get collection address
   const collectionAddr = await cedra.view({
     payload: {
       function: `${CVN1_ADDRESS}::collection::get_collection_address`,
@@ -55,91 +50,88 @@ async function createCollection(creator: Account) {
 }
 ```
 
-## Minting NFTs
-
-### Creator Self-Mint (Free)
-
-```typescript
-async function creatorSelfMint(creator: Account, collectionAddr: string) {
-  const txn = await cedra.transaction.build.simple({
-    sender: creator.accountAddress,
-    data: {
-      function: `${CVN1_ADDRESS}::minting::creator_self_mint`,
-      functionArguments: [
-        collectionAddr,
-        "NFT #1",
-        "A vaulted NFT",
-        "https://example.com/nft/1",
-        true, // is_redeemable
-      ],
-    },
-  });
-
-  const result = await cedra.signAndSubmitTransaction({ 
-    signer: creator, 
-    transaction: txn 
-  });
-  return result.hash;
-}
-```
-
-### Public Mint (Paid)
+## Minting (Seeds Core Vault)
 
 ```typescript
 async function publicMint(buyer: Account, collectionAddr: string) {
+  // mint_vault_bps % of mint price goes to CORE vault
   const txn = await cedra.transaction.build.simple({
     sender: buyer.accountAddress,
     data: {
       function: `${CVN1_ADDRESS}::minting::public_mint`,
       functionArguments: [
         collectionAddr,
-        "Public NFT",
-        "Minted by buyer",
-        "https://example.com/nft/public",
-        true,
+        "NFT #1",
+        "Vaulted NFT",
+        "https://example.com/nft/1",
+        true, // is_core_redeemable
       ],
     },
   });
 
-  const result = await cedra.signAndSubmitTransaction({ 
-    signer: buyer, 
-    transaction: txn 
-  });
+  const result = await cedra.signAndSubmitTransaction({ signer: buyer, transaction: txn });
   return result.hash;
 }
 ```
 
-## Vault Operations
+## Vault Operations (v3)
 
-### Deposit to Vault
+### Deposit to Core Vault (Long-term)
 
 ```typescript
-async function depositToVault(
-  depositor: Account,
-  nftAddr: string,
-  faMetadataAddr: string,
-  amount: bigint
-) {
+async function depositToCore(depositor: Account, nftAddr: string, amount: bigint) {
   const txn = await cedra.transaction.build.simple({
     sender: depositor.accountAddress,
     data: {
-      function: `${CVN1_ADDRESS}::vault_ops::deposit_to_vault`,
-      functionArguments: [nftAddr, faMetadataAddr, amount.toString()],
+      function: `${CVN1_ADDRESS}::vault_ops::deposit_to_core_vault`,
+      functionArguments: [nftAddr, "0x1::cedra_coin::CedraCoin", amount.toString()],
     },
   });
 
-  const result = await cedra.signAndSubmitTransaction({ 
-    signer: depositor, 
-    transaction: txn 
-  });
+  const result = await cedra.signAndSubmitTransaction({ signer: depositor, transaction: txn });
   return result.hash;
 }
 ```
 
-### Burn and Redeem
+### Deposit to Rewards Vault (Short-term)
+
+```typescript
+async function depositToRewards(depositor: Account, nftAddr: string, amount: bigint) {
+  const txn = await cedra.transaction.build.simple({
+    sender: depositor.accountAddress,
+    data: {
+      function: `${CVN1_ADDRESS}::vault_ops::deposit_to_rewards_vault`,
+      functionArguments: [nftAddr, "0x1::cedra_coin::CedraCoin", amount.toString()],
+    },
+  });
+
+  const result = await cedra.signAndSubmitTransaction({ signer: depositor, transaction: txn });
+  return result.hash;
+}
+```
+
+### Claim Rewards (Keep NFT)
+
+```typescript
+async function claimRewards(owner: Account, nftAddr: string) {
+  const txn = await cedra.transaction.build.simple({
+    sender: owner.accountAddress,
+    data: {
+      function: `${CVN1_ADDRESS}::vault_ops::claim_rewards`,
+      functionArguments: [nftAddr],
+    },
+  });
+
+  const result = await cedra.signAndSubmitTransaction({ signer: owner, transaction: txn });
+  return result.hash;
+}
+```
+
+### Burn and Redeem (Both Vaults)
 
 ```typescript
 async function burnAndRedeem(owner: Account, nftAddr: string) {
+  // Burns NFT and claims BOTH core + rewards vaults
   const txn = await cedra.transaction.build.simple({
     sender: owner.accountAddress,
     data: {
@@ -148,20 +140,45 @@ async function burnAndRedeem(owner: Account, nftAddr: string) {
     },
   });
 
-  const result = await cedra.signAndSubmitTransaction({ 
-    signer: owner, 
-    transaction: txn 
-  });
+  const result = await cedra.signAndSubmitTransaction({ signer: owner, transaction: txn });
   return result.hash;
 }
 ```
 
-## View Functions
+## View Functions (v3)
 
-### Get Vault Balances
+### Get Core Vault Balances
 
 ```typescript
-async function getVaultBalances(nftAddr: string) {
+async function getCoreBalances(nftAddr: string) {
+  const result = await cedra.view({
+    payload: {
+      function: `${CVN1_ADDRESS}::vault_views::get_core_vault_balances`,
+      functionArguments: [nftAddr],
+    },
+  });
+  return result[0] as { fa_metadata_addr: string; balance: string }[];
+}
+```
+
+### Get Rewards Vault Balances
+
+```typescript
+async function getRewardsBalances(nftAddr: string) {
+  const result = await cedra.view({
+    payload: {
+      function: `${CVN1_ADDRESS}::vault_views::get_rewards_vault_balances`,
+      functionArguments: [nftAddr],
+    },
+  });
+  return result[0] as { fa_metadata_addr: string; balance: string }[];
+}
+```
+
+### Get Combined Balances
+
+```typescript
+async function getTotalBalances(nftAddr: string) {
   const result = await cedra.view({
     payload: {
       function: `${CVN1_ADDRESS}::vault_views::get_vault_balances`,
@@ -172,52 +189,16 @@ async function getVaultBalances(nftAddr: string) {
 }
 ```
 
-### Get Vault Summary
-
-```typescript
-async function getVaultSummary(nftAddr: string) {
-  const result = await cedra.view({
-    payload: {
-      function: `${CVN1_ADDRESS}::vault_views::get_vault_summary`,
-      functionArguments: [nftAddr],
-    },
-  });
-  
-  return {
-    assetCount: Number(result[0]),
-    totalAssetTypes: Number(result[1]),
-    isRedeemable: result[2] as boolean,
-    isCompliant: result[3] as boolean,
-  };
-}
-```
-
-### Check Compliance
-
-```typescript
-async function isCompliantSale(nftAddr: string): Promise<boolean> {
-  const result = await cedra.view({
-    payload: {
-      function: `${CVN1_ADDRESS}::vault_views::last_sale_used_vault_royalty`,
-      functionArguments: [nftAddr],
-    },
-  });
-  return result[0] as boolean;
-}
-```
-
-## Marketplace Integration
-
-See [MARKETPLACE-GUIDE.md](./MARKETPLACE-GUIDE.md) for full marketplace integration details.
+## Marketplace (Royalties → Rewards Vault)
 
 ```typescript
 async function settleCompliantSale(
   marketplace: Account,
   nftAddr: string,
   buyerAddr: string,
-  paymentFaAddr: string,
   grossAmount: bigint
 ) {
+  // vault_royalty_bps % goes to REWARDS vault
   const txn = await cedra.transaction.build.simple({
     sender: marketplace.accountAddress,
     data: {
@@ -225,16 +206,24 @@ async function settleCompliantSale(
       functionArguments: [
         nftAddr,
         buyerAddr,
-        paymentFaAddr,
+        "0x1::cedra_coin::CedraCoin",
         grossAmount.toString(),
       ],
     },
   });
 
-  const result = await cedra.signAndSubmitTransaction({ 
-    signer: marketplace, 
-    transaction: txn 
-  });
+  const result = await cedra.signAndSubmitTransaction({ signer: marketplace, transaction: txn });
   return result.hash;
 }
 ```
+
+## Summary
+
+| Action | Function | Vault |
+|--------|----------|-------|
+| Mint | `public_mint` | Core |
+| Deposit long-term | `deposit_to_core_vault` | Core |
+| Deposit short-term | `deposit_to_rewards_vault` | Rewards |
+| Settle sale | `settle_sale_with_vault_royalty` | Rewards |
+| Claim rewards | `claim_rewards` | Rewards |
+| Burn & redeem | `burn_and_redeem` | Both |

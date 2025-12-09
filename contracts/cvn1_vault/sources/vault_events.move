@@ -42,6 +42,13 @@ module cvn1_vault::vault_events {
         seller_net: u64,
     }
 
+    #[event]
+    struct RewardsClaimed has drop, store {
+        nft_object_addr: address,
+        claimer: address,
+        assets_claimed: vector<address>,
+    }
+
     // ============================================
     // Emit Functions
     // ============================================
@@ -107,6 +114,19 @@ module cvn1_vault::vault_events {
             creator_cut,
             vault_cut,
             seller_net,
+        });
+    }
+
+    /// Emit a RewardsClaimed event
+    public fun emit_rewards_claimed(
+        nft_object_addr: address,
+        claimer: address,
+        assets_claimed: vector<address>,
+    ) {
+        event::emit(RewardsClaimed {
+            nft_object_addr,
+            claimer,
+            assets_claimed,
         });
     }
 }
