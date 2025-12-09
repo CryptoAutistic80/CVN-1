@@ -28,8 +28,8 @@ export function VaultActions({
     const [burning, setBurning] = useState(false);
     const [showBurnConfirm, setShowBurnConfirm] = useState(false);
 
-    // Default FA (CEDRA on testnet)
-    const defaultFa = "0x1::cedra_coin::CedraCoin";
+    // Default FA (CEDRA native coin metadata address on testnet)
+    const defaultFa = "0xa";
 
     const handleDeposit = async () => {
         if (!depositAmount || isNaN(Number(depositAmount))) return;
@@ -84,8 +84,8 @@ export function VaultActions({
                     <button
                         onClick={() => setDepositTarget("core")}
                         className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${depositTarget === "core"
-                                ? "bg-indigo-600 text-white"
-                                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                            ? "bg-indigo-600 text-white"
+                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                             }`}
                     >
                         🔒 Core
@@ -93,8 +93,8 @@ export function VaultActions({
                     <button
                         onClick={() => setDepositTarget("rewards")}
                         className={`flex-1 py-2 rounded-lg text-sm font-medium transition-all ${depositTarget === "rewards"
-                                ? "bg-emerald-600 text-white"
-                                : "bg-gray-700 text-gray-300 hover:bg-gray-600"
+                            ? "bg-emerald-600 text-white"
+                            : "bg-gray-700 text-gray-300 hover:bg-gray-600"
                             }`}
                     >
                         🎁 Rewards

@@ -42,6 +42,7 @@ function MintPageContent() {
     const [error, setError] = useState<string | null>(null);
     const [nftName, setNftName] = useState("Vaulted NFT");
     const [nftDescription, setNftDescription] = useState("Minted via CVN-1 v3 Playground");
+    const [manualAddr, setManualAddr] = useState("");
 
     useEffect(() => {
         if (!collectionAddr) {
@@ -202,14 +203,28 @@ function MintPageContent() {
                                     </button>
                                 ))}
                             </div>
-                        ) : (
-                            <div className="text-center py-12 bg-slate-800/30 rounded-2xl border border-dashed border-slate-700">
-                                <p className="text-slate-500 mb-4">No public collections found.</p>
-                                <Link href="/create" className="text-violet-400 hover:underline">
-                                    Create the first one!
-                                </Link>
+                        ) : null}
+
+                        {/* Manual Address Entry */}
+                        <div className="mt-8 bg-slate-800/30 rounded-2xl p-6 border border-slate-700/30">
+                            <h3 className="text-sm font-semibold text-slate-400 mb-3">Or enter collection address manually</h3>
+                            <div className="flex gap-3">
+                                <input
+                                    type="text"
+                                    placeholder="0x... collection address"
+                                    value={manualAddr}
+                                    onChange={(e) => setManualAddr(e.target.value)}
+                                    className="flex-1 px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:border-violet-500 focus:outline-none font-mono text-sm"
+                                />
+                                <button
+                                    onClick={() => manualAddr && handleSelectCollection(manualAddr)}
+                                    disabled={!manualAddr}
+                                    className="px-6 py-3 bg-violet-600 hover:bg-violet-500 disabled:bg-slate-700 rounded-xl text-white font-medium transition-colors"
+                                >
+                                    Go
+                                </button>
                             </div>
-                        )}
+                        </div>
                     </div>
                 ) : (
                     /* Mode: Mint Form */
