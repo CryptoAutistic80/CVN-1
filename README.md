@@ -2,14 +2,14 @@
 
 > A standard for NFTs with embedded on-chain treasuries on the Cedra Network
 
-[![Version](https://img.shields.io/badge/Version-3.0.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-4.0.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
-[![Tests](https://img.shields.io/badge/Tests-18%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-25%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
-CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasuries. v3 introduces a **dual vault architecture**:
+CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasuries. v4 adds **collection size limits** and fixes public minting:
 
 | Vault | Purpose | Redemption |
 |-------|---------|------------|

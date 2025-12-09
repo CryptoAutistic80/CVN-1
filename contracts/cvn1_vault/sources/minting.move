@@ -169,7 +169,9 @@ module cvn1_vault::minting {
         vault_events::emit_minted(nft_addr, collection_addr, creator_addr, creator_addr, is_redeemable);
     }
 
-    /// Public mint function - buyer pays and mints from a creator's collection
+    /// Public mint function - buyer pays and mints from a creator's collection (v4)
+    /// 
+    /// Uses collection signer for token creation, enforces max_supply limit.
     public entry fun public_mint(
         buyer: &signer,
         collection_addr: address,
@@ -181,6 +183,9 @@ module cvn1_vault::minting {
         let buyer_addr = signer::address_of(buyer);
         
         assert!(vault_core::config_exists(collection_addr), vault_core::err_config_not_found());
+        
+        // Check supply limit (v4)
+        assert!(vault_core::can_mint(collection_addr), vault_core::err_max_supply_reached());
         
         // Get all config values at once
         let (
@@ -198,13 +203,18 @@ module cvn1_vault::minting {
         let collection_name = collection::name(collection_obj);
         let creator_addr = collection::creator(collection_obj);
         
-        // For public minting, use numbered token (not named)
+        // Get collection signer for token creation (v4 fix)
+        let collection_signer = vault_core::get_collection_signer(collection_addr);
+        
+        // Create numbered token using collection signer (not buyer)
+        // Token name format: prefix + number + suffix = "Name #1"  
+        // Frontend should pass name like "MyNFT #" so result is "MyNFT #1"
         let constructor_ref = token::create_numbered_token(
-            buyer,
+            &collection_signer,
             collection_name,
             description,
-            name, // prefix
-            string::utf8(b""), // suffix
+            name, // prefix from frontend (e.g., "Cool NFT #")
+            string::utf8(b""), // empty suffix
             option::none(), // royalty
             uri,
         );
@@ -245,16 +255,19 @@ module cvn1_vault::minting {
             };
             
             // Seed vault with remainder
-            // NOTE: This bypasses the allowlist check intentionally.
-            // Protocol flows (mint, royalty settlement) deposit the configured
-            // payment currency, which is set by the creator. The allowlist only
-            // restricts external deposits via vault_ops::deposit_to_vault.
             if (vault_seed > 0) {
                 vault_core::deposit_to_core_vault(nft_addr, fa_metadata, payment);
             } else {
                 fungible_asset::destroy_zero(payment);
             };
         };
+        
+        // Increment minted count (v4)
+        vault_core::increment_minted_count(collection_addr);
+        
+        // Transfer NFT to buyer (since collection signer created it)
+        let token_obj = object::object_from_constructor_ref<Token>(&constructor_ref);
+        object::transfer(&collection_signer, token_obj, buyer_addr);
         
         // Emit minted event
         vault_events::emit_minted(nft_addr, collection_addr, creator_addr, buyer_addr, is_redeemable);

@@ -116,9 +116,10 @@ function MintPageContent() {
         setError(null);
 
         try {
+            // Append " #" to name so tokens are numbered: "Cool NFT #1", "Cool NFT #2", etc.
             const payload = buildPublicMintPayload(
                 collectionAddr,
-                nftName,
+                `${nftName} #`,  // prefix with # for numbering
                 nftDescription,
                 "https://cvn1.demo/nft/placeholder",
                 true

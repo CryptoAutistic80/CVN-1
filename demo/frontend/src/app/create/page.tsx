@@ -18,6 +18,7 @@ interface CollectionConfig {
     mintVaultBps: number;
     mintPrice: number;
     isRedeemable: boolean;
+    maxSupply: number;  // v4: 0 = unlimited
 }
 
 export default function CreatePage() {
@@ -31,6 +32,7 @@ export default function CreatePage() {
         mintVaultBps: 5000,
         mintPrice: 50,
         isRedeemable: true,
+        maxSupply: 0,  // v4: 0 = unlimited
     });
 
     const [creating, setCreating] = useState(false);
@@ -59,7 +61,8 @@ export default function CreatePage() {
                 BigInt(Math.floor(config.mintPrice * 1e8)),
                 CEDRA_FA,
                 [],
-                account.address?.toString() || ""
+                account.address?.toString() || "",
+                config.maxSupply  // v4
             );
 
             const result = await signAndSubmitTransaction({
@@ -260,6 +263,27 @@ export default function CreatePage() {
                                         <span className="text-white font-medium">🔥 Redeemable Core Vault</span>
                                         <p className="text-sm text-slate-400">Holders can burn NFT to claim Core + Rewards vaults</p>
                                     </div>
+                                </label>
+                            </div>
+
+                            {/* Max Supply (v4) */}
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+                                <label className="block">
+                                    <span className="text-white font-medium flex items-center gap-2">
+                                        📊 Max Supply
+                                        <span className="text-xs text-slate-400">(0 = unlimited)</span>
+                                    </span>
+                                    <input
+                                        type="number"
+                                        min="0"
+                                        value={config.maxSupply}
+                                        onChange={e => setConfig({ ...config, maxSupply: Math.max(0, parseInt(e.target.value) || 0) })}
+                                        className="mt-2 w-full bg-slate-900 border border-slate-600 rounded-lg px-4 py-2 text-white"
+                                        placeholder="0 = unlimited"
+                                    />
+                                    <p className="mt-1 text-sm text-slate-400">
+                                        {config.maxSupply === 0 ? "Unlimited mints allowed" : `Limited edition: ${config.maxSupply} NFTs max`}
+                                    </p>
                                 </label>
                             </div>
                         </div>

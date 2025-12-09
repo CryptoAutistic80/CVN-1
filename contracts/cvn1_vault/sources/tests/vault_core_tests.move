@@ -11,7 +11,7 @@ module cvn1_vault::vault_core_tests {
 
     #[test]
     fun test_error_codes_are_distinct() {
-        // Verify all error codes are unique
+        // Verify all error codes are unique (including v4 max supply)
         let codes = vector[
             vault_core::err_not_creator(),
             vault_core::err_not_owner(),
@@ -23,6 +23,7 @@ module cvn1_vault::vault_core_tests {
             vault_core::err_vault_not_found(),
             vault_core::err_invalid_royalty_bps(),
             vault_core::err_config_not_found(),
+            vault_core::err_max_supply_reached(),  // v4
         ];
         
         let i = 0;

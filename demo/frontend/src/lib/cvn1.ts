@@ -1,7 +1,7 @@
 import { Cedra, CedraConfig, Network } from "@cedra-labs/ts-sdk";
 
-// CVN-1 v3 Contract address on testnet
-export const CVN1_ADDRESS = "0x64650d57ef213323ea49c8d9b0eefc6c9d6c108b24b747c8cc2e1317a5907855";
+// CVN-1 v4 Contract address on testnet
+export const CVN1_ADDRESS = "0x52050c59f5f0d9ae741a11c5d91285cf9cd8a044be2214ba849141f2cb219632";
 
 // Initialize Cedra client for testnet
 const config = new CedraConfig({ network: Network.TESTNET });
@@ -173,6 +173,50 @@ export async function getVaultInfo(nftAddr: string): Promise<{ isRedeemable: boo
 }
 
 // ============================================
+// v4: Supply View Functions
+// ============================================
+
+export interface CollectionSupply {
+    mintedCount: number;
+    maxSupply: number;  // 0 = unlimited
+}
+
+// Get collection supply info (v4)
+export async function getCollectionSupply(collectionAddr: string): Promise<CollectionSupply | null> {
+    try {
+        const result = await cedra.view({
+            payload: {
+                function: `${CVN1_ADDRESS}::vault_views::get_collection_supply`,
+                typeArguments: [],
+                functionArguments: [collectionAddr],
+            },
+        });
+        return {
+            mintedCount: Number(result[0]),
+            maxSupply: Number(result[1]),
+        };
+    } catch {
+        return null;
+    }
+}
+
+// Check if collection can still mint (v4)
+export async function canMint(collectionAddr: string): Promise<boolean> {
+    try {
+        const result = await cedra.view({
+            payload: {
+                function: `${CVN1_ADDRESS}::vault_views::can_mint`,
+                typeArguments: [],
+                functionArguments: [collectionAddr],
+            },
+        });
+        return result[0] as boolean;
+    } catch {
+        return false;
+    }
+}
+
+// ============================================
 // Transaction Payload Builders
 // ============================================
 
@@ -186,7 +230,8 @@ export function buildInitCollectionPayload(
     mintPrice: bigint,
     mintPriceFa: string,
     allowedAssets: string[],
-    creatorPayoutAddr: string
+    creatorPayoutAddr: string,
+    maxSupply: number = 0  // v4: 0 = unlimited
 ) {
     return {
         function: `${CVN1_ADDRESS}::collection::init_collection_config`,
@@ -202,6 +247,7 @@ export function buildInitCollectionPayload(
             mintPriceFa,
             allowedAssets,
             creatorPayoutAddr,
+            maxSupply,  // v4
         ],
     };
 }

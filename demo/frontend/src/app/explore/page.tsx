@@ -11,6 +11,9 @@ import {
     getWalletNfts,
     getDualVaultBalances,
     getVaultInfo,
+    getVaultedCollections,
+    getCollectionDetails,
+    getCollectionSupply,
     buildDepositToCorePayload,
     buildDepositToRewardsPayload,
     buildClaimRewardsPayload,
@@ -18,24 +21,74 @@ import {
     formatAddress,
     VaultBalance,
     NFT,
+    CollectionSupply,
 } from "@/lib/cvn1";
+
+interface CollectionCard {
+    address: string;
+    name: string;
+    uri: string;
+    supply: CollectionSupply | null;
+}
 
 export default function ExplorePage() {
     const { connected, account, signAndSubmitTransaction } = useWallet();
+
+    // Collections state
+    const [collections, setCollections] = useState<CollectionCard[]>([]);
+    const [loadingCollections, setLoadingCollections] = useState(true);
+
+    // NFT vault exploration state
     const [nftAddress, setNftAddress] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
-
     const [coreBalances, setCoreBalances] = useState<VaultBalance[]>([]);
     const [rewardsBalances, setRewardsBalances] = useState<VaultBalance[]>([]);
     const [vaultInfo, setVaultInfo] = useState<{ isRedeemable: boolean; creator: string; isCompliant: boolean } | null>(null);
     const [hasVault, setHasVault] = useState(false);
 
+    // User's NFTs
     const [walletNfts, setWalletNfts] = useState<NFT[]>([]);
     const [loadingNfts, setLoadingNfts] = useState(false);
 
     const isOwner = connected && account?.address?.toString() === vaultInfo?.creator;
 
+    // Load collections on mount
+    useEffect(() => {
+        async function loadCollections() {
+            setLoadingCollections(true);
+            try {
+                const addrs = await getVaultedCollections();
+                const cards: CollectionCard[] = [];
+
+                for (const addr of addrs) {
+                    const [details, supply] = await Promise.all([
+                        getCollectionDetails(addr),
+                        getCollectionSupply(addr),
+                    ]);
+
+                    if (details) {
+                        cards.push({
+                            address: addr,
+                            name: details.name,
+                            uri: details.uri,
+                            supply,
+                        });
+                    }
+                }
+
+                setCollections(cards);
+            } catch (err) {
+                console.error("Failed to load collections:", err);
+            } finally {
+                setLoadingCollections(false);
+            }
+        }
+
+        loadCollections();
+    }, []);
+
+    // Load user's NFTs
     useEffect(() => {
         if (connected && account?.address) {
             setLoadingNfts(true);
@@ -116,7 +169,6 @@ export default function ExplorePage() {
         setRewardsBalances([]);
         setVaultInfo(null);
         setNftAddress("");
-        // Refresh wallet NFTs
         if (account?.address) {
             getWalletNfts(account.address.toString()).then(setWalletNfts);
         }
@@ -130,7 +182,7 @@ export default function ExplorePage() {
                     <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                         <span className="text-2xl">💎</span>
                         <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-                            CVN-1 v3
+                            CVN-1 v4
                         </span>
                     </Link>
                     <div className="flex items-center gap-4">
@@ -141,28 +193,106 @@ export default function ExplorePage() {
                 </div>
             </header>
 
-            <div className="max-w-4xl mx-auto px-6 py-12">
+            <div className="max-w-6xl mx-auto px-6 py-12">
                 <div className="text-center mb-10">
-                    <h1 className="text-4xl font-bold text-white mb-3">Explore Vaults</h1>
-                    <p className="text-slate-400">View and interact with NFT dual vaults</p>
+                    <h1 className="text-4xl font-bold text-white mb-3">Explore</h1>
+                    <p className="text-slate-400">Discover CVN-1 vaulted collections and NFTs</p>
                 </div>
 
-                {/* Search */}
-                <div className="flex gap-3 mb-8">
-                    <input
-                        type="text"
-                        placeholder="0x... NFT address"
-                        value={nftAddress}
-                        onChange={e => setNftAddress(e.target.value)}
-                        className="flex-1 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white focus:border-violet-500 focus:outline-none font-mono text-sm"
-                    />
-                    <button
-                        onClick={() => handleSearch()}
-                        disabled={loading || !nftAddress}
-                        className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50"
-                    >
-                        {loading ? "..." : "Search"}
-                    </button>
+                {/* Collections Grid */}
+                <div className="mb-12">
+                    <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        🏛️ Public Collections
+                        {collections.length > 0 && (
+                            <span className="text-sm font-normal text-slate-400">({collections.length})</span>
+                        )}
+                    </h2>
+
+                    {loadingCollections ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {[1, 2, 3].map(i => (
+                                <div key={i} className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 animate-pulse">
+                                    <div className="h-8 w-32 bg-slate-700 rounded mb-3" />
+                                    <div className="h-4 w-full bg-slate-700/50 rounded" />
+                                </div>
+                            ))}
+                        </div>
+                    ) : collections.length > 0 ? (
+                        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                            {collections.map(col => (
+                                <Link
+                                    key={col.address}
+                                    href={`/mint?collection=${col.address}`}
+                                    className="group bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 hover:border-violet-500/50 hover:bg-slate-800/70 transition-all"
+                                >
+                                    <div className="flex items-start justify-between mb-3">
+                                        <div className="w-12 h-12 rounded-xl bg-gradient-to-br from-violet-600 to-fuchsia-600 flex items-center justify-center text-2xl">
+                                            🏛️
+                                        </div>
+                                        {col.supply && (
+                                            <span className={`text-xs px-2 py-1 rounded-full font-medium ${col.supply.maxSupply === 0
+                                                    ? "bg-blue-500/20 text-blue-400"
+                                                    : col.supply.mintedCount >= col.supply.maxSupply
+                                                        ? "bg-red-500/20 text-red-400"
+                                                        : "bg-emerald-500/20 text-emerald-400"
+                                                }`}>
+                                                {col.supply.maxSupply === 0
+                                                    ? `${col.supply.mintedCount} minted`
+                                                    : `${col.supply.mintedCount}/${col.supply.maxSupply}`
+                                                }
+                                            </span>
+                                        )}
+                                    </div>
+                                    <h3 className="font-semibold text-white text-lg mb-1 group-hover:text-violet-300 transition-colors">
+                                        {col.name}
+                                    </h3>
+                                    <p className="text-xs text-slate-500 font-mono truncate">{formatAddress(col.address)}</p>
+                                    <div className="mt-3 flex items-center gap-2 text-sm text-violet-400 opacity-0 group-hover:opacity-100 transition-opacity">
+                                        <span>Mint now</span>
+                                        <span>→</span>
+                                    </div>
+                                </Link>
+                            ))}
+                        </div>
+                    ) : (
+                        <div className="text-center py-12 bg-slate-800/30 rounded-2xl border border-dashed border-slate-700">
+                            <p className="text-slate-500 mb-2">No collections found</p>
+                            <p className="text-sm text-slate-600 mb-4">Be the first to create a CVN-1 collection!</p>
+                            <Link
+                                href="/create"
+                                className="inline-block px-6 py-2 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-lg text-white font-medium hover:opacity-90"
+                            >
+                                Create Collection
+                            </Link>
+                        </div>
+                    )}
+                </div>
+
+                <hr className="border-slate-800 my-8" />
+
+                {/* NFT Vault Explorer */}
+                <div className="mb-8">
+                    <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                        🔍 Explore NFT Vault
+                    </h2>
+
+                    {/* Search */}
+                    <div className="flex gap-3 mb-6">
+                        <input
+                            type="text"
+                            placeholder="0x... NFT address"
+                            value={nftAddress}
+                            onChange={e => setNftAddress(e.target.value)}
+                            className="flex-1 px-4 py-3 bg-slate-800/50 border border-slate-700 rounded-xl text-white focus:border-violet-500 focus:outline-none font-mono text-sm"
+                        />
+                        <button
+                            onClick={() => handleSearch()}
+                            disabled={loading || !nftAddress}
+                            className="px-6 py-3 bg-gradient-to-r from-violet-600 to-fuchsia-600 rounded-xl text-white font-medium hover:opacity-90 disabled:opacity-50"
+                        >
+                            {loading ? "..." : "Search"}
+                        </button>
+                    </div>
                 </div>
 
                 {/* Your NFTs */}
@@ -213,7 +343,6 @@ export default function ExplorePage() {
                 {/* Vault Display */}
                 {hasVault && (
                     <div className="space-y-6">
-                        {/* Status Bar */}
                         <div className="bg-slate-800/50 border border-slate-700/50 rounded-xl p-4 flex items-center justify-between">
                             <div>
                                 <div className="text-sm text-slate-400">NFT Address</div>
@@ -233,7 +362,6 @@ export default function ExplorePage() {
                             </div>
                         </div>
 
-                        {/* Dual Vault Display */}
                         <DualVaultDisplay
                             coreBalances={coreBalances}
                             rewardsBalances={rewardsBalances}
@@ -241,7 +369,6 @@ export default function ExplorePage() {
                             onClaimRewards={handleClaimRewards}
                         />
 
-                        {/* Actions */}
                         <VaultActions
                             nftAddr={nftAddress}
                             isOwner={isOwner || false}

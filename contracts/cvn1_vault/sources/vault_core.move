@@ -48,6 +48,8 @@ module cvn1_vault::vault_core {
     const EINVALID_ROYALTY_BPS: u64 = 9;
     /// Config not found for collection
     const ECONFIG_NOT_FOUND: u64 = 10;
+    /// Max supply reached for collection
+    const EMAX_SUPPLY_REACHED: u64 = 11;
     
     /// Maximum basis points (100%)
     const MAX_BPS: u64 = 10000;
@@ -67,12 +69,13 @@ module cvn1_vault::vault_core {
     public fun err_vault_not_found(): u64 { EVAULT_NOT_FOUND }
     public fun err_invalid_royalty_bps(): u64 { EINVALID_ROYALTY_BPS }
     public fun err_config_not_found(): u64 { ECONFIG_NOT_FOUND }
+    public fun err_max_supply_reached(): u64 { EMAX_SUPPLY_REACHED }
 
     // ============================================
     // Data Structures
     // ============================================
 
-    /// Configuration for a vaulted NFT collection
+    /// Configuration for a vaulted NFT collection (v4)
     /// Stored under the collection object's address
     struct VaultedCollectionConfig has key {
         /// Creator royalty in basis points (10000 = 100%)
@@ -89,6 +92,12 @@ module cvn1_vault::vault_core {
         allowed_assets: vector<address>,
         /// Address to receive creator payments
         creator_payout_addr: address,
+        /// ExtendRef for collection signer (enables public minting)
+        collection_extend_ref: ExtendRef,
+        /// Maximum tokens that can be minted (0 = unlimited)
+        max_supply: u64,
+        /// Current count of minted tokens
+        minted_count: u64,
     }
 
     /// Per-NFT vault information (v3: Dual Vault Architecture)
@@ -195,6 +204,38 @@ module cvn1_vault::vault_core {
             config.allowed_assets,
             config.creator_payout_addr,
         )
+    }
+
+    // ============================================
+    // v4: Supply Tracking Functions
+    // ============================================
+
+    /// Generate collection signer for public minting
+    public(friend) fun get_collection_signer(collection_addr: address): signer
+    acquires VaultedCollectionConfig {
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
+        object::generate_signer_for_extending(&config.collection_extend_ref)
+    }
+
+    /// Check if more tokens can be minted (max_supply == 0 means unlimited)
+    public fun can_mint(collection_addr: address): bool
+    acquires VaultedCollectionConfig {
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
+        config.max_supply == 0 || config.minted_count < config.max_supply
+    }
+
+    /// Increment minted count after successful mint
+    public(friend) fun increment_minted_count(collection_addr: address)
+    acquires VaultedCollectionConfig {
+        let config = borrow_global_mut<VaultedCollectionConfig>(collection_addr);
+        config.minted_count = config.minted_count + 1;
+    }
+
+    /// Get supply info (minted_count, max_supply)
+    public fun get_supply(collection_addr: address): (u64, u64)
+    acquires VaultedCollectionConfig {
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
+        (config.minted_count, config.max_supply)
     }
 
     // ============================================
@@ -314,7 +355,7 @@ module cvn1_vault::vault_core {
     // Constructor Functions (friend-only)
     // ============================================
 
-    /// Create and store a new VaultedCollectionConfig
+    /// Create and store a new VaultedCollectionConfig (v4)
     public(friend) fun create_and_store_config(
         signer: &signer,
         creator_royalty_bps: u16,
@@ -324,6 +365,8 @@ module cvn1_vault::vault_core {
         mint_price_fa: address,
         allowed_assets: vector<address>,
         creator_payout_addr: address,
+        collection_extend_ref: ExtendRef,
+        max_supply: u64,
     ) {
         move_to(signer, VaultedCollectionConfig {
             creator_royalty_bps,
@@ -333,6 +376,9 @@ module cvn1_vault::vault_core {
             mint_price_fa,
             allowed_assets,
             creator_payout_addr,
+            collection_extend_ref,
+            max_supply,
+            minted_count: 0,
         });
     }
 
