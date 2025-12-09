@@ -16,9 +16,7 @@ module cvn1_vault::collection_tests {
 
     /// Helper to get collection address after creation
     fun get_collection_address(creator: address, name: vector<u8>): address {
-        use cedra_token_objects::collection;
-        let name_str = utf8(name);
-        collection::create_collection_address(&creator, &name_str)
+        collection::get_collection_address(creator, utf8(name))
     }
 
     // ============================================
@@ -69,6 +67,32 @@ module cvn1_vault::collection_tests {
             0,     // mint vault %
             0,     // price
             @0x0,  // currency
+            vector::empty(),
+            @0x123
+        );
+    }
+
+    #[test(creator = @0x123)]
+    #[expected_failure(abort_code = 7, location = cvn1_vault::collection)]
+    fun test_duplicate_collection_fails(creator: &signer) {
+        // First creation should succeed
+        collection::init_collection_config(
+            creator,
+            utf8(b"Same Name Collection"),
+            utf8(b"Description"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123
+        );
+        
+        // Second creation with same name should fail with ECOLLECTION_ALREADY_EXISTS
+        collection::init_collection_config(
+            creator,
+            utf8(b"Same Name Collection"),
+            utf8(b"Different Description"),
+            utf8(b"https://different.com"),
+            500, 500, 0, 0, @0x0,
             vector::empty(),
             @0x123
         );

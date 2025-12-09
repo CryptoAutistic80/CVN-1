@@ -3,6 +3,7 @@
 /// Handles collection initialization and configuration.
 module cvn1_vault::collection {
     use std::string::String;
+    use std::signer;
     use std::option;
     use cedra_framework::object;
     use cedra_token_objects::collection;
@@ -16,6 +17,9 @@ module cvn1_vault::collection {
     /// Initialize a new vaulted NFT collection with configuration
     /// 
     /// Creates an unlimited collection and stores the CVN-1 config on the collection object.
+    /// 
+    /// NOTE: Entry functions cannot return values in Move. After calling this,
+    /// use `get_collection_address(creator, name)` to retrieve the collection address.
     public entry fun init_collection_config(
         creator: &signer,
         collection_name: String,
@@ -29,6 +33,14 @@ module cvn1_vault::collection {
         allowed_assets: vector<address>,
         creator_payout_addr: address
     ) {
+        // Check if collection already exists for this creator with this name
+        let creator_addr = signer::address_of(creator);
+        let collection_addr = collection::create_collection_address(&creator_addr, &collection_name);
+        assert!(
+            !vault_core::config_exists(collection_addr),
+            vault_core::err_collection_already_exists()
+        );
+        
         // Validate royalty basis points (for secondary sales)
         assert!(
             (creator_royalty_bps as u64) + (vault_royalty_bps as u64) <= vault_core::max_bps(),
@@ -63,5 +75,18 @@ module cvn1_vault::collection {
             allowed_assets,
             creator_payout_addr,
         );
+    }
+
+    // ============================================
+    // View Functions
+    // ============================================
+
+    #[view]
+    /// Get the deterministic collection address for a creator and collection name
+    /// 
+    /// Use this after calling `init_collection_config` to get the collection address
+    /// for subsequent minting calls.
+    public fun get_collection_address(creator: address, collection_name: String): address {
+        collection::create_collection_address(&creator, &collection_name)
     }
 }
