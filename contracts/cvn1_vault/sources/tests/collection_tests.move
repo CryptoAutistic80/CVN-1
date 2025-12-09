@@ -36,7 +36,8 @@ module cvn1_vault::collection_tests {
             0,    // free mint
             @0x0, // no mint currency
             vector::empty(),
-            @0x123
+            @0x123,
+            0  // max_supply: 0 = unlimited
         );
         
         let collection_addr = get_collection_address(
@@ -68,7 +69,8 @@ module cvn1_vault::collection_tests {
             0,     // price
             @0x0,  // currency
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
     }
 
@@ -83,7 +85,8 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
         
         // Second creation with same name should fail with ECOLLECTION_ALREADY_EXISTS
@@ -94,7 +97,8 @@ module cvn1_vault::collection_tests {
             utf8(b"https://different.com"),
             500, 500, 0, 0, @0x0,
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
     }
 
@@ -111,7 +115,8 @@ module cvn1_vault::collection_tests {
             10000, // 100% of mint to vault
             0, @0x0,
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
         
         let collection_addr = get_collection_address(
@@ -134,7 +139,8 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             250, 250, 0, 0, @0x0,
             allowed,
-            @0x123
+            @0x123,
+            0
         );
         
         let collection_addr = get_collection_address(
@@ -156,7 +162,8 @@ module cvn1_vault::collection_tests {
             utf8(b"https://example.com"),
             0, 0, 0, 0, @0x0, // all zeros = no royalties, free mint
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
         
         let collection_addr = get_collection_address(
@@ -182,7 +189,8 @@ module cvn1_vault::collection_tests {
             10001, // 100.01% - invalid!
             0, @0x0,
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
     }
 
@@ -199,7 +207,8 @@ module cvn1_vault::collection_tests {
             1000000, // 1 unit price
             @0xABC, // some FA address
             vector::empty(),
-            @0x123
+            @0x123,
+            0
         );
         
         let collection_addr = get_collection_address(
@@ -209,5 +218,126 @@ module cvn1_vault::collection_tests {
         
         // Config stored successfully
         assert!(vault_core::config_exists(collection_addr), 0);
+    }
+
+    // ============================================
+    // v4: Max Supply Tests
+    // ============================================
+
+    #[test(creator = @0x123)]
+    fun test_collection_with_max_supply(creator: &signer) {
+        collection::init_collection_config(
+            creator,
+            utf8(b"Limited Edition"),
+            utf8(b"Only 100 available"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123,
+            100  // max_supply = 100
+        );
+        
+        let collection_addr = get_collection_address(
+            signer::address_of(creator), 
+            b"Limited Edition"
+        );
+        
+        // Check supply view function
+        let (minted, max) = vault_views::get_collection_supply(collection_addr);
+        assert!(minted == 0, 0);
+        assert!(max == 100, 1);
+        
+        // Can mint should return true
+        assert!(vault_views::can_mint(collection_addr), 2);
+    }
+
+    #[test(creator = @0x123)]
+    fun test_unlimited_supply(creator: &signer) {
+        collection::init_collection_config(
+            creator,
+            utf8(b"Unlimited Edition"),
+            utf8(b"No limit"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123,
+            0  // max_supply = 0 (unlimited)
+        );
+        
+        let collection_addr = get_collection_address(
+            signer::address_of(creator), 
+            b"Unlimited Edition"
+        );
+        
+        let (minted, max) = vault_views::get_collection_supply(collection_addr);
+        assert!(minted == 0, 0);
+        assert!(max == 0, 1);  // 0 = unlimited
+        
+        // Can mint should return true for unlimited
+        assert!(vault_views::can_mint(collection_addr), 2);
+    }
+
+    #[test(_creator = @0x123)]
+    fun test_can_mint_nonexistent(_creator: &signer) {
+        // Should return false for non-existent collection
+        let fake_addr = @0xDEADBEEF;
+        assert!(!vault_views::can_mint(fake_addr), 0);
+    }
+
+    #[test(creator = @0x123)]
+    fun test_collection_single_item_supply(creator: &signer) {
+        // Test edge case: max_supply = 1 (single edition)
+        collection::init_collection_config(
+            creator,
+            utf8(b"Single Edition"),
+            utf8(b"Only 1 available"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123,
+            1  // max_supply = 1
+        );
+        
+        let collection_addr = get_collection_address(
+            signer::address_of(creator), 
+            b"Single Edition"
+        );
+        
+        let (minted, max) = vault_views::get_collection_supply(collection_addr);
+        assert!(minted == 0, 0);
+        assert!(max == 1, 1);
+        assert!(vault_views::can_mint(collection_addr), 2);
+    }
+
+    #[test(creator = @0x123)]
+    fun test_collection_large_max_supply(creator: &signer) {
+        // Test large max supply value
+        collection::init_collection_config(
+            creator,
+            utf8(b"Large Supply"),
+            utf8(b"Many NFTs"),
+            utf8(b"https://example.com"),
+            250, 250, 0, 0, @0x0,
+            vector::empty(),
+            @0x123,
+            1000000  // 1 million max supply
+        );
+        
+        let collection_addr = get_collection_address(
+            signer::address_of(creator), 
+            b"Large Supply"
+        );
+        
+        let (minted, max) = vault_views::get_collection_supply(collection_addr);
+        assert!(minted == 0, 0);
+        assert!(max == 1000000, 1);
+    }
+
+    #[test(_creator = @0x123)]
+    #[expected_failure(abort_code = 10, location = cvn1_vault::vault_views)]
+    fun test_get_supply_nonexistent(_creator: &signer) {
+        // Should fail for non-existent collection
+        let fake_addr = @0xBEEF;
+        vault_views::get_collection_supply(fake_addr);
     }
 }

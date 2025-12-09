@@ -103,5 +103,28 @@ module cvn1_vault::vault_views {
         
         (non_zero_count, total_types, is_redeemable, is_compliant)
     }
+
+    // ============================================
+    // v4: Supply View Functions
+    // ============================================
+
+    #[view]
+    /// Get collection supply info (v4)
+    /// Returns (minted_count, max_supply)
+    /// If max_supply == 0, the collection has unlimited supply.
+    public fun get_collection_supply(collection_addr: address): (u64, u64) {
+        assert!(vault_core::config_exists(collection_addr), vault_core::err_config_not_found());
+        vault_core::get_supply(collection_addr)
+    }
+
+    #[view]
+    /// Check if collection can still mint (v4)
+    /// Returns true if minted_count < max_supply OR max_supply == 0 (unlimited)
+    public fun can_mint(collection_addr: address): bool {
+        if (!vault_core::config_exists(collection_addr)) {
+            return false
+        };
+        vault_core::can_mint(collection_addr)
+    }
 }
 

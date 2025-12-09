@@ -5,6 +5,7 @@ module cvn1_vault::minting {
     use std::string::{Self, String};
     use std::option;
     use std::signer;
+    use std::vector;
     
     use cedra_framework::object::Self;
     use cedra_framework::fungible_asset::{Self, Metadata};
@@ -169,7 +170,9 @@ module cvn1_vault::minting {
         vault_events::emit_minted(nft_addr, collection_addr, creator_addr, creator_addr, is_redeemable);
     }
 
-    /// Public mint function - buyer pays and mints from a creator's collection
+    /// Public mint function - buyer pays and mints from a creator's collection (v4)
+    /// 
+    /// Uses collection signer for token creation, enforces max_supply limit.
     public entry fun public_mint(
         buyer: &signer,
         collection_addr: address,
@@ -181,6 +184,9 @@ module cvn1_vault::minting {
         let buyer_addr = signer::address_of(buyer);
         
         assert!(vault_core::config_exists(collection_addr), vault_core::err_config_not_found());
+        
+        // Check supply limit (v4)
+        assert!(vault_core::can_mint(collection_addr), vault_core::err_max_supply_reached());
         
         // Get all config values at once
         let (
@@ -198,13 +204,24 @@ module cvn1_vault::minting {
         let collection_name = collection::name(collection_obj);
         let creator_addr = collection::creator(collection_obj);
         
-        // For public minting, use numbered token (not named)
-        let constructor_ref = token::create_numbered_token(
-            buyer,
+        // Get collection signer for token creation (v4 fix)
+        let collection_signer = vault_core::get_collection_signer(collection_addr);
+        
+        // Get current minted count for numbering (before increment)
+        let (minted_count, _max) = vault_core::get_supply(collection_addr);
+        let token_number = minted_count + 1;
+        
+        // Create token name with number: "Name #1", "Name #2", etc.
+        let token_name = name;
+        string::append(&mut token_name, string::utf8(b"#"));
+        string::append(&mut token_name, u64_to_string(token_number));
+        
+        // Use token::create with collection signer - creates unique object
+        let constructor_ref = token::create(
+            &collection_signer,
             collection_name,
             description,
-            name, // prefix
-            string::utf8(b""), // suffix
+            token_name,
             option::none(), // royalty
             uri,
         );
@@ -245,10 +262,6 @@ module cvn1_vault::minting {
             };
             
             // Seed vault with remainder
-            // NOTE: This bypasses the allowlist check intentionally.
-            // Protocol flows (mint, royalty settlement) deposit the configured
-            // payment currency, which is set by the creator. The allowlist only
-            // restricts external deposits via vault_ops::deposit_to_vault.
             if (vault_seed > 0) {
                 vault_core::deposit_to_core_vault(nft_addr, fa_metadata, payment);
             } else {
@@ -256,7 +269,37 @@ module cvn1_vault::minting {
             };
         };
         
+        // Increment minted count (v4)
+        vault_core::increment_minted_count(collection_addr);
+        
+        // Transfer NFT to buyer (since collection signer created it)
+        let token_obj = object::object_from_constructor_ref<Token>(&constructor_ref);
+        object::transfer(&collection_signer, token_obj, buyer_addr);
+        
         // Emit minted event
         vault_events::emit_minted(nft_addr, collection_addr, creator_addr, buyer_addr, is_redeemable);
+    }
+
+    // ============================================
+    // Helper Functions
+    // ============================================
+
+    /// Convert u64 to String for token numbering
+    fun u64_to_string(value: u64): String {
+        if (value == 0) {
+            return string::utf8(b"0")
+        };
+        
+        let buffer = vector::empty<u8>();
+        let n = value;
+        while (n > 0) {
+            let digit = ((n % 10) as u8) + 48; // ASCII '0' = 48
+            vector::push_back(&mut buffer, digit);
+            n = n / 10;
+        };
+        
+        // Reverse the buffer
+        vector::reverse(&mut buffer);
+        string::utf8(buffer)
     }
 }

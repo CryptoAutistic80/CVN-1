@@ -14,7 +14,7 @@ module cvn1_vault::collection {
     // Entry Functions
     // ============================================
 
-    /// Initialize a new vaulted NFT collection with configuration
+    /// Initialize a new vaulted NFT collection with configuration (v4)
     /// 
     /// Creates an unlimited collection and stores the CVN-1 config on the collection object.
     /// 
@@ -31,7 +31,8 @@ module cvn1_vault::collection {
         mint_price: u64,
         mint_price_fa: address,
         allowed_assets: vector<address>,
-        creator_payout_addr: address
+        creator_payout_addr: address,
+        max_supply: u64  // 0 = unlimited
     ) {
         // Check if collection already exists for this creator with this name
         let creator_addr = signer::address_of(creator);
@@ -64,7 +65,10 @@ module cvn1_vault::collection {
         
         let collection_signer = object::generate_signer(&constructor_ref);
         
-        // Create and store collection config
+        // Generate ExtendRef for collection (enables public minting)
+        let collection_extend_ref = object::generate_extend_ref(&constructor_ref);
+        
+        // Create and store collection config with v4 fields
         vault_core::create_and_store_config(
             &collection_signer,
             creator_royalty_bps,
@@ -74,6 +78,8 @@ module cvn1_vault::collection {
             mint_price_fa,
             allowed_assets,
             creator_payout_addr,
+            collection_extend_ref,
+            max_supply,
         );
     }
 

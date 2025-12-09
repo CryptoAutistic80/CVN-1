@@ -116,9 +116,10 @@ function MintPageContent() {
         setError(null);
 
         try {
+            // Contract handles numbering: "Name #1", "Name #2", etc.
             const payload = buildPublicMintPayload(
                 collectionAddr,
-                nftName,
+                nftName,  // Just the name, contract appends "#N"
                 nftDescription,
                 "https://cvn1.demo/nft/placeholder",
                 true
