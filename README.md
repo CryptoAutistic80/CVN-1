@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/Version-1.1.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
-[![Tests](https://img.shields.io/badge/Tests-30%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-18%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
@@ -37,14 +37,8 @@ cedra move compile --named-addresses cvn1_vault=default
 ### Test
 
 ```bash
-# Contract tests (13 passing)
-cedra move test --named-addresses cvn1_vault=default
-
-# TypeScript SDK tests (17 passing)
-cd sdk/typescript && npm test
-
-# Rust SDK tests (all passing)
-cd sdk/rust && cargo test
+# Contract tests (18 passing)
+cedra move test --dev
 ```
 
 ### Deploy (Testnet)
@@ -102,12 +96,21 @@ CVN-1/
 ├── contracts/cvn1_vault/     # Move smart contract
 │   ├── Move.toml
 │   └── sources/
-│       └── vaulted_collection.move
-├── sdk/typescript/           # TypeScript SDK (coming soon)
-├── demo/                     # Demo UI (coming soon)
-├── indexer/                  # Indexer service (coming soon)
+│       ├── vault_core.move       # Core data structures
+│       ├── vault_events.move     # Event definitions
+│       ├── collection.move       # Collection init
+│       ├── minting.move          # Mint functions
+│       ├── vault_ops.move        # Vault operations
+│       ├── royalties.move        # Royalty settlement
+│       ├── vault_views.move      # View functions
+│       └── tests/                # Unit tests
+├── sdk/typescript/           # TypeScript SDK
+├── demo/                     # Demo UI
 ├── docs/                     # Documentation
-├── CVN-1-spec.md            # Technical specification
+│   ├── CVN1-SPEC.md              # Full specification
+│   ├── TYPESCRIPT-INTEGRATION.md # SDK examples
+│   ├── MARKETPLACE-GUIDE.md     # Marketplace integration
+│   └── ...                       # Other docs
 └── DEVELOPMENT_PLAN.md      # Development roadmap
 ```
 
@@ -127,7 +130,9 @@ Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
 
 ## Documentation
 
-- [CVN-1 Specification](CVN-1-spec.md) — Full technical spec
+- [CVN-1 Specification](docs/CVN1-SPEC.md) — Full technical spec
+- [TypeScript Integration](docs/TYPESCRIPT-INTEGRATION.md) — SDK examples
+- [Marketplace Guide](docs/MARKETPLACE-GUIDE.md) — Integration for marketplaces
 - [Use Cases](docs/USE_CASES.md) — Deployment strategies & examples
 - [Deployment](docs/DEPLOYMENT.md) — Testnet deployment info
 - [Gas Benchmarks](docs/GAS_BENCHMARKS.md) — Transaction costs
