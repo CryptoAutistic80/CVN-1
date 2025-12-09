@@ -64,9 +64,13 @@ module cvn1_vault::collection {
         );
         
         let collection_signer = object::generate_signer(&constructor_ref);
+        let collection_addr = signer::address_of(&collection_signer);
         
         // Generate ExtendRef for collection (enables public minting)
         let collection_extend_ref = object::generate_extend_ref(&constructor_ref);
+        
+        // Generate TransferRef to enable ownership transfer
+        let transfer_ref = object::generate_transfer_ref(&constructor_ref);
         
         // Create and store collection config with v4 fields
         vault_core::create_and_store_config(
@@ -81,6 +85,11 @@ module cvn1_vault::collection {
             collection_extend_ref,
             max_supply,
         );
+        
+        // Transfer collection ownership to itself using TransferRef (v4.1 fix)
+        // This enables create_token_as_collection_owner to work with collection_signer
+        let linear_transfer_ref = object::generate_linear_transfer_ref(&transfer_ref);
+        object::transfer_with_ref(linear_transfer_ref, collection_addr);
     }
 
     // ============================================

@@ -2,7 +2,7 @@
 
 > A standard for NFTs with embedded on-chain treasuries on the Cedra Network
 
-[![Version](https://img.shields.io/badge/Version-4.1.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-4.2.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
 [![Tests](https://img.shields.io/badge/Tests-35%20passing-brightgreen.svg)](#testing)
