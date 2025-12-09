@@ -4,10 +4,9 @@ import { useState } from "react";
 import Link from "next/link";
 import { ConnectButton } from "@/components/ConnectButton";
 import { useWallet } from "@/components/wallet-provider";
-import { CVN1_ADDRESS, getCollectionAddrFromTx } from "@/lib/cvn1";
+import { CVN1_ADDRESS, getCollectionAddrFromTx, buildInitCollectionPayload } from "@/lib/cvn1";
 
-// CEDRA native coin FA metadata address (0xa on testnet - the fungible asset metadata object)
-// Use 0x0 for free mints (contract accepts @0x0 as "no payment")
+// CEDRA native coin FA metadata address
 const CEDRA_FA = "0xa";
 
 interface CollectionConfig {
@@ -21,45 +20,11 @@ interface CollectionConfig {
     isRedeemable: boolean;
 }
 
-const presets: Record<string, Partial<CollectionConfig>> = {
-    "premium-art": {
-        name: "Premium Art Collection",
-        mintVaultBps: 10000,
-        mintPrice: 100,
-        creatorRoyaltyBps: 500,
-        vaultRoyaltyBps: 250,
-    },
-    "pfp-collection": {
-        name: "PFP Collection",
-        mintVaultBps: 5000,
-        mintPrice: 50,
-        creatorRoyaltyBps: 250,
-        vaultRoyaltyBps: 250,
-    },
-    "piggy-bank": {
-        name: "Piggy Bank",
-        mintVaultBps: 0,
-        mintPrice: 0,
-        creatorRoyaltyBps: 0,
-        vaultRoyaltyBps: 0,
-    },
-    "gaming-item": {
-        name: "Gaming Item",
-        mintVaultBps: 8000,
-        mintPrice: 100,
-        creatorRoyaltyBps: 0,
-        vaultRoyaltyBps: 500,
-    },
-    "custom": {
-        name: "My Custom Collection",
-    },
-};
-
 export default function CreatePage() {
     const { connected, account, signAndSubmitTransaction } = useWallet();
     const [config, setConfig] = useState<CollectionConfig>({
         name: "My Vaulted Collection",
-        description: "NFTs with built-in value",
+        description: "NFTs with built-in dual vaults",
         uri: "https://example.com/collection.json",
         creatorRoyaltyBps: 250,
         vaultRoyaltyBps: 250,
@@ -68,23 +33,11 @@ export default function CreatePage() {
         isRedeemable: true,
     });
 
-    const [selectedPreset, setSelectedPreset] = useState<string>("custom");
     const [creating, setCreating] = useState(false);
     const [created, setCreated] = useState(false);
     const [txHash, setTxHash] = useState<string>("");
     const [collectionAddr, setCollectionAddr] = useState<string>("");
     const [error, setError] = useState<string | null>(null);
-
-    const applyPreset = (presetId: string) => {
-        setSelectedPreset(presetId);
-        const preset = presets[presetId];
-        if (preset) {
-            setConfig(prev => ({
-                ...prev,
-                ...preset,
-            }));
-        }
-    };
 
     const handleCreate = async () => {
         if (!connected || !account) {
@@ -96,29 +49,25 @@ export default function CreatePage() {
         setError(null);
 
         try {
-            // Call init_collection_config on the contract
+            const payload = buildInitCollectionPayload(
+                config.name,
+                config.description,
+                config.uri,
+                config.creatorRoyaltyBps,
+                config.vaultRoyaltyBps,
+                config.mintVaultBps,
+                BigInt(Math.floor(config.mintPrice * 1e8)),
+                CEDRA_FA,
+                [],
+                account.address?.toString() || ""
+            );
+
             const result = await signAndSubmitTransaction({
-                data: {
-                    function: `${CVN1_ADDRESS}::vaulted_collection::init_collection_config`,
-                    typeArguments: [],
-                    functionArguments: [
-                        config.name,                                    // collection_name
-                        config.description,                              // collection_description
-                        config.uri,                                      // collection_uri
-                        config.creatorRoyaltyBps.toString(),            // creator_royalty_bps (u16)
-                        config.vaultRoyaltyBps.toString(),              // vault_royalty_bps (u16)
-                        config.mintVaultBps.toString(),                 // mint_vault_bps (u16)
-                        Math.floor(config.mintPrice * 1e8).toString(),  // mint_price (u64 in octas)
-                        CEDRA_FA,                                        // mint_price_fa (address)
-                        [],                                              // allowed_assets (empty = allow all)
-                        account.address?.toString() || "",              // creator_payout_addr
-                    ],
-                },
+                data: payload,
             });
 
             setTxHash(result.hash);
 
-            // Retrieve collection address from transaction events
             const addr = await getCollectionAddrFromTx(result.hash);
             if (addr) {
                 setCollectionAddr(addr);
@@ -137,104 +86,96 @@ export default function CreatePage() {
     const creatorAmount = config.mintPrice - vaultAmount;
 
     return (
-        <main className="min-h-screen bg-gradient-to-br from-gray-900 via-gray-800 to-gray-900">
+        <main className="min-h-screen bg-gradient-to-br from-slate-950 via-slate-900 to-slate-950">
             {/* Header */}
-            <header className="border-b border-gray-700/50 backdrop-blur-sm bg-gray-900/50">
+            <header className="border-b border-slate-700/50 backdrop-blur-sm bg-slate-900/50">
                 <div className="max-w-7xl mx-auto px-6 py-4 flex items-center justify-between">
                     <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                         <span className="text-2xl">💎</span>
-                        <span className="text-xl font-bold text-white">CVN-1 Playground</span>
+                        <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
+                            CVN-1 v3
+                        </span>
                     </Link>
                     <div className="flex items-center gap-4">
-                        <Link href="/" className="text-gray-400 hover:text-white">Home</Link>
-                        <Link href="/mint" className="text-gray-400 hover:text-white">Mint</Link>
+                        <Link href="/" className="text-slate-400 hover:text-white text-sm">Home</Link>
+                        <Link href="/mint" className="text-slate-400 hover:text-white text-sm">Mint</Link>
+                        <Link href="/explore" className="text-slate-400 hover:text-white text-sm">Explore</Link>
                         <ConnectButton />
                     </div>
                 </div>
             </header>
 
-            <div className="max-w-4xl mx-auto px-6 py-12">
+            <div className="max-w-5xl mx-auto px-6 py-12">
                 <div className="text-center mb-10">
-                    <h1 className="text-3xl font-bold text-white mb-2">Create Vaulted Collection</h1>
-                    <p className="text-gray-400">Configure your NFT collection with built-in vault mechanics</p>
+                    <h1 className="text-4xl font-bold text-white mb-3">Create Collection</h1>
+                    <p className="text-slate-400">Deploy a vaulted NFT collection with dual vault architecture</p>
                 </div>
 
-                {/* Error Banner */}
                 {error && (
                     <div className="mb-6 p-4 bg-red-500/20 border border-red-500/50 rounded-xl text-red-400 text-center">
                         {error}
                     </div>
                 )}
 
-                {/* Connect Wallet Prompt */}
                 {!connected && (
-                    <div className="mb-6 p-6 bg-purple-500/10 border border-purple-500/30 rounded-xl text-center">
-                        <p className="text-purple-300 mb-2">Connect your wallet to create a collection on testnet</p>
-                        <p className="text-sm text-gray-400">Click the "Connect" button in the header</p>
+                    <div className="mb-6 p-6 bg-violet-500/10 border border-violet-500/30 rounded-xl text-center">
+                        <p className="text-violet-300 mb-2">Connect your wallet to create a collection</p>
+                        <p className="text-sm text-slate-400">Click &quot;Connect&quot; in the header</p>
                     </div>
                 )}
 
                 {!created ? (
-                    <div className="grid md:grid-cols-3 gap-8">
+                    <div className="grid lg:grid-cols-5 gap-8">
                         {/* Config Panel */}
-                        <div className="md:col-span-2 space-y-6">
-                            {/* Presets */}
-                            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
-                                <h2 className="text-lg font-semibold text-white mb-4">Quick Presets</h2>
-                                <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-                                    {Object.entries(presets).map(([id, preset]) => (
-                                        <button
-                                            key={id}
-                                            onClick={() => applyPreset(id)}
-                                            className={`p-3 rounded-lg border text-sm transition-all ${selectedPreset === id
-                                                ? "border-purple-500 bg-purple-500/20 text-white"
-                                                : "border-gray-700 bg-gray-800/50 text-gray-400 hover:border-gray-600"
-                                                }`}
-                                        >
-                                            {id === "premium-art" && "🎨 "}
-                                            {id === "pfp-collection" && "🚀 "}
-                                            {id === "piggy-bank" && "🏦 "}
-                                            {id === "gaming-item" && "🎮 "}
-                                            {id === "custom" && "⚙️ "}
-                                            {preset.name?.split(" ")[0] || id}
-                                        </button>
-                                    ))}
-                                </div>
-                            </div>
-
+                        <div className="lg:col-span-3 space-y-6">
                             {/* Collection Info */}
-                            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
-                                <h2 className="text-lg font-semibold text-white mb-4">Collection Info</h2>
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+                                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <span>📝</span> Collection Info
+                                </h2>
                                 <div className="space-y-4">
                                     <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Collection Name</label>
+                                        <label className="block text-sm text-slate-400 mb-1">Name</label>
                                         <input
                                             type="text"
                                             value={config.name}
                                             onChange={e => setConfig({ ...config, name: e.target.value })}
-                                            className="w-full px-4 py-2 bg-gray-900/50 border border-gray-700 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                                            className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:border-violet-500 focus:outline-none"
                                         />
                                     </div>
                                     <div>
-                                        <label className="block text-sm text-gray-400 mb-1">Description</label>
+                                        <label className="block text-sm text-slate-400 mb-1">Description</label>
                                         <textarea
                                             value={config.description}
                                             onChange={e => setConfig({ ...config, description: e.target.value })}
-                                            className="w-full px-4 py-2 bg-gray-900/50 border border-gray-700 rounded-lg text-white focus:border-purple-500 focus:outline-none"
+                                            className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:border-violet-500 focus:outline-none resize-none"
                                             rows={2}
+                                        />
+                                    </div>
+                                    <div>
+                                        <label className="block text-sm text-slate-400 mb-1">Metadata URI</label>
+                                        <input
+                                            type="text"
+                                            value={config.uri}
+                                            onChange={e => setConfig({ ...config, uri: e.target.value })}
+                                            className="w-full px-4 py-3 bg-slate-900/50 border border-slate-700 rounded-xl text-white focus:border-violet-500 focus:outline-none font-mono text-sm"
                                         />
                                     </div>
                                 </div>
                             </div>
 
                             {/* Mint Configuration */}
-                            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
-                                <h2 className="text-lg font-semibold text-white mb-4">Mint Configuration</h2>
-                                <div className="space-y-4">
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+                                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <span>⚡</span> Mint Settings
+                                </h2>
+                                <div className="space-y-5">
                                     <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-sm text-gray-400">Mint Price (CEDRA)</label>
-                                            <span className="text-sm text-white">{config.mintPrice}</span>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm text-slate-400">Mint Price</label>
+                                            <span className="text-sm font-medium text-white">
+                                                {config.mintPrice === 0 ? "FREE" : `${config.mintPrice} CEDRA`}
+                                            </span>
                                         </div>
                                         <input
                                             type="range"
@@ -242,13 +183,15 @@ export default function CreatePage() {
                                             max="500"
                                             value={config.mintPrice}
                                             onChange={e => setConfig({ ...config, mintPrice: Number(e.target.value) })}
-                                            className="w-full accent-purple-500"
+                                            className="w-full accent-violet-500"
                                         />
                                     </div>
                                     <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-sm text-gray-400">Mint → Vault %</label>
-                                            <span className="text-sm text-white">{config.mintVaultBps / 100}%</span>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm text-slate-400">Mint → Core Vault %</label>
+                                            <span className="text-sm font-medium text-indigo-400">
+                                                {config.mintVaultBps / 100}%
+                                            </span>
                                         </div>
                                         <input
                                             type="range"
@@ -257,20 +200,23 @@ export default function CreatePage() {
                                             step="100"
                                             value={config.mintVaultBps}
                                             onChange={e => setConfig({ ...config, mintVaultBps: Number(e.target.value) })}
-                                            className="w-full accent-purple-500"
+                                            className="w-full accent-indigo-500"
                                         />
+                                        <p className="text-xs text-slate-500 mt-1">% of mint price seeded to Core Vault (long-term)</p>
                                     </div>
                                 </div>
                             </div>
 
                             {/* Royalty Configuration */}
-                            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
-                                <h2 className="text-lg font-semibold text-white mb-4">Secondary Sale Royalties</h2>
-                                <div className="space-y-4">
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+                                <h2 className="text-lg font-semibold text-white mb-4 flex items-center gap-2">
+                                    <span>💰</span> Secondary Sale Royalties
+                                </h2>
+                                <div className="space-y-5">
                                     <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-sm text-gray-400">Creator Royalty</label>
-                                            <span className="text-sm text-white">{config.creatorRoyaltyBps / 100}%</span>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm text-slate-400">Creator Royalty</label>
+                                            <span className="text-sm font-medium text-white">{config.creatorRoyaltyBps / 100}%</span>
                                         </div>
                                         <input
                                             type="range"
@@ -283,9 +229,9 @@ export default function CreatePage() {
                                         />
                                     </div>
                                     <div>
-                                        <div className="flex justify-between mb-1">
-                                            <label className="text-sm text-gray-400">Vault Royalty</label>
-                                            <span className="text-sm text-white">{config.vaultRoyaltyBps / 100}%</span>
+                                        <div className="flex justify-between mb-2">
+                                            <label className="text-sm text-slate-400">Rewards Vault Royalty</label>
+                                            <span className="text-sm font-medium text-emerald-400">{config.vaultRoyaltyBps / 100}%</span>
                                         </div>
                                         <input
                                             type="range"
@@ -294,72 +240,79 @@ export default function CreatePage() {
                                             step="25"
                                             value={config.vaultRoyaltyBps}
                                             onChange={e => setConfig({ ...config, vaultRoyaltyBps: Number(e.target.value) })}
-                                            className="w-full accent-green-500"
+                                            className="w-full accent-emerald-500"
                                         />
+                                        <p className="text-xs text-slate-500 mt-1">Goes to Rewards Vault (claimable by holder)</p>
                                     </div>
                                 </div>
                             </div>
 
-                            {/* Options */}
-                            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6">
-                                <label className="flex items-center gap-3 cursor-pointer">
+                            {/* Redeemable Toggle */}
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6">
+                                <label className="flex items-center gap-4 cursor-pointer">
                                     <input
                                         type="checkbox"
                                         checked={config.isRedeemable}
                                         onChange={e => setConfig({ ...config, isRedeemable: e.target.checked })}
-                                        className="w-5 h-5 accent-purple-500"
+                                        className="w-5 h-5 accent-violet-500"
                                     />
                                     <div>
-                                        <span className="text-white font-medium">Redeemable</span>
-                                        <p className="text-sm text-gray-400">Allow holders to burn NFT and claim vault contents</p>
+                                        <span className="text-white font-medium">🔥 Redeemable Core Vault</span>
+                                        <p className="text-sm text-slate-400">Holders can burn NFT to claim Core + Rewards vaults</p>
                                     </div>
                                 </label>
                             </div>
                         </div>
 
                         {/* Preview Panel */}
-                        <div className="space-y-6">
-                            <div className="bg-gray-800/50 border border-gray-700/50 rounded-xl p-6 sticky top-6">
+                        <div className="lg:col-span-2">
+                            <div className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 sticky top-6">
                                 <h2 className="text-lg font-semibold text-white mb-4">Preview</h2>
 
                                 {/* Collection Preview */}
-                                <div className="mb-6">
-                                    <div className="text-2xl mb-2">💎</div>
-                                    <h3 className="font-bold text-white">{config.name}</h3>
-                                    <p className="text-sm text-gray-400 line-clamp-2">{config.description}</p>
+                                <div className="bg-gradient-to-br from-violet-500/10 to-fuchsia-500/10 rounded-xl p-4 mb-6 border border-violet-500/20">
+                                    <div className="text-3xl mb-2">💎</div>
+                                    <h3 className="font-bold text-white text-lg">{config.name}</h3>
+                                    <p className="text-sm text-slate-400 line-clamp-2">{config.description}</p>
                                 </div>
 
-                                {/* Mint Split */}
+                                {/* Mint Split Visual */}
                                 <div className="mb-6">
-                                    <div className="text-sm text-gray-400 mb-2">Mint Split</div>
-                                    <div className="flex h-3 rounded-full overflow-hidden mb-2">
+                                    <div className="text-sm text-slate-400 mb-2">Mint Split</div>
+                                    <div className="flex h-4 rounded-full overflow-hidden mb-2">
                                         <div
-                                            className="bg-gradient-to-r from-purple-500 to-pink-500"
+                                            className="bg-gradient-to-r from-indigo-500 to-violet-500"
                                             style={{ width: `${config.mintVaultBps / 100}%` }}
                                         />
                                         <div
-                                            className="bg-gray-600"
+                                            className="bg-slate-600"
                                             style={{ width: `${100 - config.mintVaultBps / 100}%` }}
                                         />
                                     </div>
                                     <div className="flex justify-between text-xs">
-                                        <span className="text-purple-400">{vaultAmount} CEDRA → Vault</span>
-                                        <span className="text-gray-400">{creatorAmount} → Creator</span>
+                                        <span className="text-indigo-400">🔒 {vaultAmount} → Core Vault</span>
+                                        <span className="text-slate-400">{creatorAmount} → Creator</span>
                                     </div>
                                 </div>
 
                                 {/* Stats */}
-                                <div className="space-y-2 mb-6">
+                                <div className="space-y-3 mb-6">
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-gray-400">Mint Price</span>
-                                        <span className="text-white">{config.mintPrice === 0 ? "FREE" : `${config.mintPrice} CEDRA`}</span>
+                                        <span className="text-slate-400">Mint Price</span>
+                                        <span className="text-white font-medium">
+                                            {config.mintPrice === 0 ? "FREE" : `${config.mintPrice} CEDRA`}
+                                        </span>
                                     </div>
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-gray-400">Total Royalty</span>
-                                        <span className="text-white">{(config.creatorRoyaltyBps + config.vaultRoyaltyBps) / 100}%</span>
+                                        <span className="text-slate-400">Creator Royalty</span>
+                                        <span className="text-white">{config.creatorRoyaltyBps / 100}%</span>
                                     </div>
                                     <div className="flex justify-between text-sm">
-                                        <span className="text-gray-400">Redeemable</span>
+                                        <span className="text-slate-400">Rewards Vault Royalty</span>
+                                        <span className="text-emerald-400">{config.vaultRoyaltyBps / 100}%</span>
+                                    </div>
+                                    <div className="flex justify-between text-sm">
+                                        <span className="text-slate-400">Redeemable</span>
                                         <span className={config.isRedeemable ? "text-green-400" : "text-red-400"}>
                                             {config.isRedeemable ? "Yes" : "No"}
                                         </span>
@@ -369,10 +322,10 @@ export default function CreatePage() {
                                 {/* Create Button */}
                                 <button
                                     onClick={handleCreate}
-                                    disabled={creating}
-                                    className="w-full py-3 px-4 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold hover:opacity-90 transition-opacity disabled:opacity-50"
+                                    disabled={creating || !connected}
+                                    className="w-full py-4 px-4 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold hover:opacity-90 transition-opacity disabled:opacity-50 disabled:cursor-not-allowed"
                                 >
-                                    {creating ? "Creating..." : "Create Collection"}
+                                    {creating ? "Creating..." : "Deploy Collection"}
                                 </button>
                             </div>
                         </div>
@@ -380,25 +333,25 @@ export default function CreatePage() {
                 ) : (
                     /* Success */
                     <div className="max-w-md mx-auto text-center">
-                        <div className="bg-green-500/20 border border-green-500/50 rounded-xl p-8 mb-6">
+                        <div className="bg-emerald-500/20 border border-emerald-500/50 rounded-2xl p-8 mb-6">
                             <span className="text-6xl mb-4 block">✅</span>
-                            <h2 className="text-2xl font-bold text-white mb-2">Collection Created!</h2>
-                            <p className="text-gray-400 mb-4">{config.name}</p>
+                            <h2 className="text-2xl font-bold text-white mb-2">Collection Deployed!</h2>
+                            <p className="text-slate-400 mb-4">{config.name}</p>
                             {collectionAddr && (
-                                <div className="bg-gray-900/50 p-3 rounded-lg mb-4 text-left">
-                                    <p className="text-xs text-gray-400 mb-1">Collection Address</p>
+                                <div className="bg-slate-900/50 p-4 rounded-xl mb-4 text-left">
+                                    <p className="text-xs text-slate-400 mb-1">Collection Address</p>
                                     <p className="text-sm font-mono text-white break-all">{collectionAddr}</p>
                                 </div>
                             )}
                             {txHash && (
-                                <p className="text-xs text-gray-500 font-mono break-all">
+                                <p className="text-xs text-slate-500 font-mono break-all">
                                     TX: {txHash}
                                 </p>
                             )}
                         </div>
                         <Link
                             href={collectionAddr ? `/mint?collection=${collectionAddr}` : "/mint"}
-                            className="inline-block py-3 px-8 rounded-lg bg-gradient-to-r from-purple-500 to-pink-500 text-white font-bold hover:opacity-90"
+                            className="inline-block py-4 px-8 rounded-xl bg-gradient-to-r from-violet-600 to-fuchsia-600 text-white font-bold hover:opacity-90"
                         >
                             Start Minting →
                         </Link>

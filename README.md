@@ -44,7 +44,7 @@ cedra move test --dev
 ### Deploy (Testnet)
 
 ```bash
-cedra move publish --named-addresses cvn1_vault=default
+cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 ```
 
 ## Contract API

@@ -13,37 +13,37 @@
 #### [x] [DELETE] `demo/backend/`
 - Remove the Rust backend and its simulated endpoints.
 
-### 2. Core Logic (`demo/frontend/src/lib/cvn1.ts`)
+### [x] 2. Core Logic (`demo/frontend/src/lib/cvn1.ts`)
 - Update `CVN1_ADDRESS` to v3 deployment.
 - Add `DualVaultBalance` interface (core vs rewards).
 - Add `getCoreVaultBalances` / `getRewardsVaultBalances` functions.
 - Add `claimRewards` / `burnAndRedeem` helper methods (payload generators).
 
-### 3. Components (`demo/frontend/src/components/`)
-#### [NEW] `DualVaultDisplay.tsx`
+### [x] 3. Components (`demo/frontend/src/components/`)
+#### [x] `DualVaultDisplay.tsx`
 - Visual component showing two distinct vault areas:
     - **Core Vault:** "Locked" icon, long-term value.
     - **Rewards Vault:** "Gift" icon, claimable value.
 
-#### [NEW] `ActionButtons.tsx`
+#### [x] `VaultActions.tsx`
 - **Claim Rewards:** Calls `claim_rewards`.
 - **Deposit:** Dropdown to choose Core vs Rewards.
 - **Burn:** Critical action with confirmation modal.
 
-### 4. Pages (`demo/frontend/src/app/`)
-#### [MODIFY] `create/page.tsx`
+### [x] 4. Pages (`demo/frontend/src/app/`)
+#### [x] `create/page.tsx`
 - **Refactor:** Remove "Choose Strategy" cards.
 - **New UI:** Single clean form exposing all `init_collection_config` params:
     - Name, Description, URI
     - Royalty % (Creator + Rewards Vault)
     - Mint Price & Fee Splitting
 
-#### [MODIFY] `mint/page.tsx`
+#### [x] `mint/page.tsx`
 - **Refactor:** Remove strategy selection.
 - **New UI:** Simple "Mint from Collection" input.
 - **Feature:** Show "Mint Seed -> Core Vault" flow visually.
 
-#### [MODIFY] `explore/page.tsx` & `vault/[address]/page.tsx`
+#### [x] `explore/page.tsx` & `vault/[address]/page.tsx`
 - Use `DualVaultDisplay`.
 - Show live "Claimable Rewards" status.
 
