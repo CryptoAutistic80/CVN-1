@@ -227,13 +227,16 @@ module cvn1_vault::vault_ops {
         // Emit redeem event
         vault_events::emit_redeemed(nft_addr, owner_addr, redeemed_assets);
         
-        // Burn the token
+        // Burn the token (this handles token resource cleanup)
         token::burn(burn_ref);
         
-        // Use delete_ref if available to clean up the NFT object
+        // Note: We don't call object::delete here because:
+        // 1. token::burn already handles the Token resource cleanup
+        // 2. The object may still have other framework resources attached
+        // 3. Attempting to delete causes "Failed to move resource" errors
+        // Just discard the delete_ref option
         if (option::is_some(&delete_ref_opt)) {
-            let delete_ref = option::destroy_some(delete_ref_opt);
-            object::delete(delete_ref);
+            option::destroy_some(delete_ref_opt);
         } else {
             option::destroy_none(delete_ref_opt);
         };
