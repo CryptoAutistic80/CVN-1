@@ -6,7 +6,6 @@ A demo app showcasing the CVN-1 Vaulted NFT Standard with 3 mint strategies.
 
 ### 1. Start Backend
 ```bash
-cd demo/backend
 cargo run
 # Runs on http://127.0.0.1:8080
 ```
