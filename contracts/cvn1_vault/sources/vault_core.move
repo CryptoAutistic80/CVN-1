@@ -283,6 +283,11 @@ module cvn1_vault::vault_core {
     // ============================================
 
     /// Deposit FA into vault (creates store if needed)
+    /// 
+    /// This is the INTERNAL deposit function for use by friend modules only.
+    /// It does NOT check the allowlist - that check is handled by the public
+    /// entry point `vault_ops::deposit_to_vault`. Protocol flows (minting,
+    /// royalty settlement) intentionally bypass the allowlist.
     public(friend) fun deposit_to_vault(
         nft_addr: address,
         fa_metadata: Object<Metadata>,

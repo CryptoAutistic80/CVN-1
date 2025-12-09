@@ -75,6 +75,10 @@ module cvn1_vault::royalties {
         primary_fungible_store::deposit(creator_payout_addr, creator_fa);
         
         // Deposit vault cut into NFT's vault
+        // NOTE: This bypasses the allowlist check intentionally.
+        // Royalty settlements deposit the sale currency, which the marketplace
+        // and seller agreed upon. The allowlist only restricts external deposits
+        // via vault_ops::deposit_to_vault, not protocol-internal flows.
         vault_core::deposit_to_vault(nft_addr, sale_currency, vault_fa);
         
         // Transfer seller net to current owner

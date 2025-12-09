@@ -23,8 +23,11 @@ module cvn1_vault::vault_ops {
 
     /// Deposit fungible assets into an NFT's vault
     /// 
-    /// Anyone can deposit allowed assets into any NFT's vault.
-    /// If the collection has an allowlist, only those FA types are accepted.
+    /// This is the PUBLIC entry point for external deposits. Anyone can deposit
+    /// allowed assets into any NFT's vault. If the collection has an allowlist,
+    /// only those FA types are accepted. Protocol-internal deposits (minting,
+    /// royalty settlement) use vault_core::deposit_to_vault directly, which
+    /// bypasses this check intentionally.
     public entry fun deposit_to_vault(
         depositor: &signer,
         nft_object: Object<Token>,

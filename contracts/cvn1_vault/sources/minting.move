@@ -100,6 +100,10 @@ module cvn1_vault::minting {
             };
             
             // Seed vault with remainder
+            // NOTE: This bypasses the allowlist check intentionally.
+            // Protocol flows (mint, royalty settlement) deposit the configured
+            // payment currency, which is set by the creator. The allowlist only
+            // restricts external deposits via vault_ops::deposit_to_vault.
             if (vault_seed > 0) {
                 vault_core::deposit_to_vault(nft_addr, fa_metadata, payment);
             } else {
@@ -241,6 +245,10 @@ module cvn1_vault::minting {
             };
             
             // Seed vault with remainder
+            // NOTE: This bypasses the allowlist check intentionally.
+            // Protocol flows (mint, royalty settlement) deposit the configured
+            // payment currency, which is set by the creator. The allowlist only
+            // restricts external deposits via vault_ops::deposit_to_vault.
             if (vault_seed > 0) {
                 vault_core::deposit_to_vault(nft_addr, fa_metadata, payment);
             } else {
