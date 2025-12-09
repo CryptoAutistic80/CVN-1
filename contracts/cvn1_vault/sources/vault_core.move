@@ -118,6 +118,16 @@ module cvn1_vault::vault_core {
         balance: u64,
     }
 
+    /// Get the balance amount from a VaultBalance struct
+    public fun get_balance_amount(vb: &VaultBalance): u64 {
+        vb.balance
+    }
+
+    /// Get the FA metadata address from a VaultBalance struct
+    public fun get_balance_fa_addr(vb: &VaultBalance): address {
+        vb.fa_metadata_addr
+    }
+
     // ============================================
     // Existence Checks
     // ============================================

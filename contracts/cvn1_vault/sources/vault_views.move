@@ -2,6 +2,11 @@
 /// 
 /// All read-only view functions for querying vault and collection state.
 module cvn1_vault::vault_views {
+    use std::string::String;
+    
+    use cedra_framework::object::Object;
+    use cedra_token_objects::token::{Self, Token};
+    
     use cvn1_vault::vault_core::{Self, VaultBalance};
 
     // ============================================
@@ -45,4 +50,44 @@ module cvn1_vault::vault_views {
         assert!(vault_core::vault_exists(nft_addr), vault_core::err_vault_not_found());
         vault_core::get_vault_info_for_view(nft_addr)
     }
+
+    #[view]
+    /// Get token metadata for a vaulted NFT
+    /// Returns (name, description, uri)
+    /// 
+    /// This is a convenience function that wraps the token module's getters.
+    public fun get_token_metadata(nft_object: Object<Token>): (String, String, String) {
+        (
+            token::name(nft_object),
+            token::description(nft_object),
+            token::uri(nft_object)
+        )
+    }
+
+    #[view]
+    /// Get a summary of an NFT's vault
+    /// Returns (asset_count, total_asset_types, is_redeemable, is_compliant)
+    /// 
+    /// Useful for displaying vault status at a glance.
+    public fun get_vault_summary(nft_addr: address): (u64, u64, bool, bool) {
+        assert!(vault_core::vault_exists(nft_addr), vault_core::err_vault_not_found());
+        
+        let balances = vault_core::get_vault_balances(nft_addr);
+        let (is_redeemable, _creator_addr, is_compliant) = vault_core::get_vault_info_for_view(nft_addr);
+        
+        // Count total assets and non-zero balances
+        let total_types = std::vector::length(&balances);
+        let non_zero_count = 0u64;
+        let i = 0u64;
+        while (i < total_types) {
+            let balance = std::vector::borrow(&balances, i);
+            if (vault_core::get_balance_amount(balance) > 0) {
+                non_zero_count = non_zero_count + 1;
+            };
+            i = i + 1;
+        };
+        
+        (non_zero_count, total_types, is_redeemable, is_compliant)
+    }
 }
+

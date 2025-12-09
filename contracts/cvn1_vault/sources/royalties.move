@@ -1,6 +1,31 @@
 /// CVN-1: Royalty Settlement
 /// 
 /// Handles compliant secondary sales with vault royalty enforcement.
+/// 
+/// ## Compliance Model
+/// 
+/// CVN-1 provides a STRONGLY-ENCOURAGED sale path, not cryptographic enforcement.
+/// 
+/// - `settle_sale_with_vault_royalty` is the canonical compliant path
+/// - Sets `last_sale_compliant = true` when used
+/// - Standard `object::transfer` or `token::transfer` can bypass royalties entirely
+/// 
+/// This is NOT a bug - it's a fundamental limit of shared token standards on Cedra.
+/// CVN-1 provides verifiable compliance tracking, not prevention.
+/// 
+/// ## For Marketplaces
+/// 
+/// To be CVN-1 compliant, call `settle_sale_with_vault_royalty` for all settlements.
+/// The marketplace holds funds in escrow, then this function atomically:
+/// 1. Splits funds (creator cut, vault cut, seller net)
+/// 2. Deposits vault cut into the NFT's vault
+/// 3. Transfers NFT to buyer
+/// 4. Marks sale as compliant
+/// 
+/// ## For Collectors
+/// 
+/// Check `last_sale_used_vault_royalty` to verify if an NFT's last sale was compliant.
+/// Non-compliant sales (direct transfers) will show `false`.
 module cvn1_vault::royalties {
     use cedra_framework::object::{Self, Object};
     use cedra_framework::fungible_asset::{Self, Metadata};
@@ -100,4 +125,33 @@ module cvn1_vault::royalties {
             seller_net,
         );
     }
+
+    /// Mark an NFT as having had a non-compliant transfer
+    /// 
+    /// This is an OPTIONAL helper for marketplaces or wallet applications
+    /// that want to explicitly track when a sale occurred without using
+    /// the compliant settlement path.
+    /// 
+    /// Only the current owner can mark their NFT as non-compliant.
+    /// Calling this is voluntary - direct transfers naturally result in
+    /// an outdated (previous) compliance flag.
+    public entry fun mark_non_compliant_transfer(
+        owner: &signer,
+        nft_object: Object<Token>
+    ) {
+        use std::signer;
+        
+        let owner_addr = signer::address_of(owner);
+        let nft_addr = object::object_address(&nft_object);
+        
+        // Verify ownership
+        assert!(object::owner(nft_object) == owner_addr, vault_core::err_not_owner());
+        
+        // Verify vault exists
+        assert!(vault_core::vault_exists(nft_addr), vault_core::err_vault_not_found());
+        
+        // Mark as non-compliant
+        vault_core::set_vault_compliance(nft_addr, false);
+    }
 }
+
