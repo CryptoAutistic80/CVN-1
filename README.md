@@ -2,23 +2,28 @@
 
 > A standard for NFTs with embedded on-chain treasuries on the Cedra Network
 
-[![Version](https://img.shields.io/badge/Version-1.1.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-3.0.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
-[![Tests](https://img.shields.io/badge/Tests-30%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-18%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
-CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasury. Each vaulted NFT can hold multiple FA types, creating intrinsic on-chain value that travels with the token.
+CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasuries. v3 introduces a **dual vault architecture**:
+
+| Vault | Purpose | Redemption |
+|-------|---------|------------|
+| **Core Vault** | Long-term floor value, mint seed | Burn NFT only |
+| **Rewards Vault** | Short-term, royalties, activity rewards | Claim anytime |
 
 ### Key Features
 
-- 🏦 **Native Vaulting** — Every NFT has a dedicated multi-asset vault
-- 🚀 **Mint-Time Value** — Seed vaults with % of mint fee (0-100%)
-- 💰 **Open Deposits** — Anyone can top up a vault to increase intrinsic value
-- 🔥 **Burn to Redeem** — Owners can destroy the NFT to claim vault contents
-- 💎 **Composable Royalties** — Standard settlement hook for compliant marketplaces
-- 📊 **Indexer-Friendly** — View functions and events for easy off-chain tracking
+- 🔒 **Dual Vaults** — Core (locked) + Rewards (claimable) per NFT
+- 🚀 **Mint-Time Value** — Seed % of mint fee to Core Vault
+- 💰 **Open Deposits** — Anyone can deposit to either vault
+- 🎁 **Claim Rewards** — Holders claim Rewards Vault without burning
+- 🔥 **Burn to Redeem** — Destroy NFT to claim BOTH vaults
+- 💎 **Vault Royalties** — Secondary sales grow Rewards Vault
 
 ## Quick Start
 
@@ -37,20 +42,14 @@ cedra move compile --named-addresses cvn1_vault=default
 ### Test
 
 ```bash
-# Contract tests (13 passing)
-cedra move test --named-addresses cvn1_vault=default
-
-# TypeScript SDK tests (17 passing)
-cd sdk/typescript && npm test
-
-# Rust SDK tests (all passing)
-cd sdk/rust && cargo test
+# Contract tests (18 passing)
+cedra move test --dev
 ```
 
 ### Deploy (Testnet)
 
 ```bash
-cedra move publish --named-addresses cvn1_vault=default
+cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 ```
 
 ## Contract API
@@ -60,19 +59,23 @@ cedra move publish --named-addresses cvn1_vault=default
 | Function | Description |
 |----------|-------------|
 | `init_collection_config` | Create collection with royalty & mint config |
-| `creator_mint_vaulted_nft` | Mint NFT with vault seeding from mint fee |
-| `deposit_to_vault` | Deposit fungible assets into an NFT's vault |
-| `burn_and_redeem` | Burn NFT and claim all vault contents |
-| `settle_sale_with_vault_royalty` | Marketplace settlement with creator + vault royalties |
+| `public_mint` | Mint NFT with vault seeding to Core Vault |
+| `deposit_to_core_vault` | Deposit FA to NFT's Core Vault |
+| `deposit_to_rewards_vault` | Deposit FA to NFT's Rewards Vault |
+| `claim_rewards` | Claim Rewards Vault without burning |
+| `burn_and_redeem` | Burn NFT and claim both vaults |
+| `settle_sale_with_vault_royalty` | Marketplace settlement (royalties → Rewards Vault) |
 
 ### View Functions
 
 | Function | Description |
 |----------|-------------|
 | `get_vault_config` | Get collection royalty configuration |
-| `get_vault_balances` | Get all FA balances in an NFT's vault |
+| `get_core_vault_balances` | Get Core Vault balances for an NFT |
+| `get_rewards_vault_balances` | Get Rewards Vault balances for an NFT |
+| `get_vault_balances` | Get combined balances (both vaults) |
 | `vault_exists` | Check if an NFT has a vault |
-| `last_sale_used_vault_royalty` | Compliance tracking for marketplace sales |
+| `is_vault_redeemable` | Check if Core Vault can be redeemed |
 
 ## Architecture
 
@@ -81,16 +84,17 @@ cedra move publish --named-addresses cvn1_vault=default
 │                    NFT (Token Object)                   │
 │  ┌───────────────────────────────────────────────────┐  │
 │  │                    VaultInfo                      │  │
-│  │  • is_redeemable: bool                           │  │
-│  │  • vault_stores: SmartTable<FA, Store>           │  │
+│  │  • is_core_redeemable: bool                      │  │
+│  │  • core_stores: SmartTable<FA, Store>            │  │
+│  │  • rewards_stores: SmartTable<FA, Store>         │  │
 │  │  • extend_ref / delete_ref / burn_ref            │  │
 │  └───────────────────────────────────────────────────┘  │
 │                          │                              │
 │        ┌─────────────────┼─────────────────┐            │
 │        ▼                 ▼                 ▼            │
 │   ┌─────────┐      ┌─────────┐      ┌─────────┐        │
-│   │FA Store │      │FA Store │      │FA Store │        │
-│   │ (CEDRA) │      │ (USDC)  │      │ (APT)   │        │
+│   │🔒 CORE  │      │🎁 REWARD│      │🎁 REWARD│        │
+│   │ (CEDRA) │      │ (CEDRA) │      │ (USDC)  │        │
 │   └─────────┘      └─────────┘      └─────────┘        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -102,32 +106,43 @@ CVN-1/
 ├── contracts/cvn1_vault/     # Move smart contract
 │   ├── Move.toml
 │   └── sources/
-│       └── vaulted_collection.move
-├── sdk/typescript/           # TypeScript SDK (coming soon)
-├── demo/                     # Demo UI (coming soon)
-├── indexer/                  # Indexer service (coming soon)
+│       ├── vault_core.move       # Core data structures
+│       ├── vault_events.move     # Event definitions
+│       ├── collection.move       # Collection init
+│       ├── minting.move          # Mint functions
+│       ├── vault_ops.move        # Vault operations
+│       ├── royalties.move        # Royalty settlement
+│       ├── vault_views.move      # View functions
+│       └── tests/                # Unit tests
+├── sdk/typescript/           # TypeScript SDK
+├── demo/                     # Demo UI
 ├── docs/                     # Documentation
-├── CVN-1-spec.md            # Technical specification
+│   ├── CVN1-SPEC.md              # Full specification
+│   ├── TYPESCRIPT-INTEGRATION.md # SDK examples
+│   ├── MARKETPLACE-GUIDE.md     # Marketplace integration
+│   └── ...                       # Other docs
 └── DEVELOPMENT_PLAN.md      # Development roadmap
 ```
 
 ## Royalty Model
 
-CVN-1 implements a dual-royalty system:
+CVN-1 v3 implements a dual-royalty system where vault royalties go to the Rewards Vault:
 
 | Royalty Type | Recipient | Purpose |
 |--------------|-----------|---------|
 | **Creator Royalty** | Creator payout address | Standard creator compensation |
-| **Vault Royalty** | NFT's vault | Automatic value accumulation |
+| **Vault Royalty** | NFT's **Rewards Vault** | Claimable by owner anytime |
 
 Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
 - Creator receives: 2.5 CEDRA
-- NFT vault receives: 2.5 CEDRA  
+- NFT Rewards Vault receives: 2.5 CEDRA (holder can claim)
 - Seller receives: 95 CEDRA
 
 ## Documentation
 
-- [CVN-1 Specification](CVN-1-spec.md) — Full technical spec
+- [CVN-1 Specification](docs/CVN1-SPEC.md) — Full technical spec
+- [TypeScript Integration](docs/TYPESCRIPT-INTEGRATION.md) — SDK examples
+- [Marketplace Guide](docs/MARKETPLACE-GUIDE.md) — Integration for marketplaces
 - [Use Cases](docs/USE_CASES.md) — Deployment strategies & examples
 - [Deployment](docs/DEPLOYMENT.md) — Testnet deployment info
 - [Gas Benchmarks](docs/GAS_BENCHMARKS.md) — Transaction costs

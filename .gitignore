@@ -60,3 +60,8 @@ Cargo.lock
 newkey.txt
 newkey.txt.pub
 *.key
+
+# Planning files
+version3-plan.md
+demo-revamp-plan.md
+*-plan.md

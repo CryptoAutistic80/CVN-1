@@ -29,7 +29,7 @@
 
 ### 5. Capability Patterns
 - [x] `ExtendRef` used for vault signer generation
-- [x] `DeleteRef` stored but not used (SmartTable destroy handles cleanup)
+- [x] `DeleteRef` used for NFT and FungibleStore cleanup in burn_and_redeem
 - [x] `BurnRef` moved and consumed in burn_and_redeem
 
 ### 6. Edge Cases Handled
@@ -70,10 +70,11 @@
 | Check | Status |
 |-------|--------|
 | Self-review | ✅ Complete |
-| Unit tests | ✅ 13 passing |
+| Unit tests | ✅ 18 passing |
+| Modular architecture | ✅ 7 modules |
 | Testnet deploy | ✅ Verified |
 | External audit | ⏳ Not yet |
 
 ---
 
-*Last reviewed: 2025-12-08*
+*Last reviewed: 2025-12-09*
