@@ -13,3 +13,6 @@ CedraTokenObjects = { git = "https://github.com/cedra-labs/cedra-framework.git",
 CedraStdlib = { git = "https://github.com/cedra-labs/cedra-framework.git", subdir = "cedra-stdlib", rev = "mainnet" }
 
 [dev-dependencies]
+
+[dev-addresses]
+cvn1_vault = "0xCAFE"
