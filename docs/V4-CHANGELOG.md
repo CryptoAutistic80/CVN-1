@@ -2,7 +2,17 @@
 
 ## Overview
 
-Version 4.0.0 adds **Collection Size Limits** and fixes the **Public Mint Bug**.
+Version 4.1.0 adds **Collection Size Limits** and fixes the **Public Mint Bug**.
+
+## v4.1.0 Hotfix
+
+Fixed `token::create_numbered_token` issue - it requires creator signer address to match `collection::creator()`. Solution: use `token::create` with manual numbering from `minted_count`.
+
+**Changes:**
+- `public_mint` now uses `token::create` instead of `create_numbered_token`
+- Added `u64_to_string` helper for token numbering
+- Token names format: "Name #1", "Name #2", etc. (contract handles numbering)
+- Added 7 new minting tests (total: 35 tests)
 
 ## New Features
 
@@ -36,7 +46,7 @@ struct VaultedCollectionConfig {
 | Function | Change |
 |----------|--------|
 | `init_collection_config` | Added `max_supply` parameter |
-| `public_mint` | Uses collection signer, enforces supply |
+| `public_mint` | Uses collection signer, enforces supply, auto-numbers tokens |
 
 ### Helper Functions (vault_core)
 
@@ -60,27 +70,20 @@ can_mint(collection_addr): bool
 |----|-----|
 | `init_collection_config` (11 params) | `init_collection_config` (12 params, added `max_supply`) |
 
-## Bug Fixes
-
-### Public Mint EOBJECT_DOES_NOT_EXIST (Critical)
-
-**Before (v3):** `public_mint` used buyer as token creator, failing when buyer ≠ collection creator.
-
-**After (v4):** Uses `collection_extend_ref` to generate collection signer for token creation, then transfers to buyer.
-
 ## Deployment
 
-**Contract Address (Testnet):** `0x52050c59f5f0d9ae741a11c5d91285cf9cd8a044be2214ba849141f2cb219632`
+**Contract Address (Testnet):** `0x0ce0283ba1806bb42a43f53679f9f668189ec6f1b6d13a7be706697a817c8646`
 
-**Transaction:** [View on Cedrascan](https://cedrascan.com/txn/0xf5d91c87c98a3ba669b026e30b8f7cbcc77c32db1e45623a8382f1903a2973fd?network=testnet)
+**Transaction:** [View on Cedrascan](https://cedrascan.com/txn/0x5cbf6dafaffce2945fdb0b1c26d0cd133a1263e861b14351035061f96b278933?network=testnet)
 
-**Profile:** `cvn1-v4`
+**Profile:** `cvn1-v4-fix`
 
 **Deploy Command:**
 ```bash
-cedra move publish --profile cvn1-v4 --named-addresses cvn1_vault=cvn1-v4
+cedra move publish --profile cvn1-v4-fix --named-addresses cvn1_vault=cvn1-v4-fix
 ```
 
 ---
 
-*Planned: December 2024*
+*Deployed: December 2024*
+
