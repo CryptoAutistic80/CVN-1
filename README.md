@@ -9,16 +9,21 @@
 
 ## Overview
 
-CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasury. Each vaulted NFT can hold multiple FA types, creating intrinsic on-chain value that travels with the token.
+CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasuries. v3 introduces a **dual vault architecture**:
+
+| Vault | Purpose | Redemption |
+|-------|---------|------------|
+| **Core Vault** | Long-term floor value, mint seed | Burn NFT only |
+| **Rewards Vault** | Short-term, royalties, activity rewards | Claim anytime |
 
 ### Key Features
 
-- 🏦 **Native Vaulting** — Every NFT has a dedicated multi-asset vault
-- 🚀 **Mint-Time Value** — Seed vaults with % of mint fee (0-100%)
-- 💰 **Open Deposits** — Anyone can top up a vault to increase intrinsic value
-- 🔥 **Burn to Redeem** — Owners can destroy the NFT to claim vault contents
-- 💎 **Composable Royalties** — Standard settlement hook for compliant marketplaces
-- 📊 **Indexer-Friendly** — View functions and events for easy off-chain tracking
+- 🔒 **Dual Vaults** — Core (locked) + Rewards (claimable) per NFT
+- 🚀 **Mint-Time Value** — Seed % of mint fee to Core Vault
+- 💰 **Open Deposits** — Anyone can deposit to either vault
+- 🎁 **Claim Rewards** — Holders claim Rewards Vault without burning
+- 🔥 **Burn to Redeem** — Destroy NFT to claim BOTH vaults
+- 💎 **Vault Royalties** — Secondary sales grow Rewards Vault
 
 ## Quick Start
 
@@ -54,19 +59,23 @@ cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 | Function | Description |
 |----------|-------------|
 | `init_collection_config` | Create collection with royalty & mint config |
-| `creator_mint_vaulted_nft` | Mint NFT with vault seeding from mint fee |
-| `deposit_to_vault` | Deposit fungible assets into an NFT's vault |
-| `burn_and_redeem` | Burn NFT and claim all vault contents |
-| `settle_sale_with_vault_royalty` | Marketplace settlement with creator + vault royalties |
+| `public_mint` | Mint NFT with vault seeding to Core Vault |
+| `deposit_to_core_vault` | Deposit FA to NFT's Core Vault |
+| `deposit_to_rewards_vault` | Deposit FA to NFT's Rewards Vault |
+| `claim_rewards` | Claim Rewards Vault without burning |
+| `burn_and_redeem` | Burn NFT and claim both vaults |
+| `settle_sale_with_vault_royalty` | Marketplace settlement (royalties → Rewards Vault) |
 
 ### View Functions
 
 | Function | Description |
 |----------|-------------|
 | `get_vault_config` | Get collection royalty configuration |
-| `get_vault_balances` | Get all FA balances in an NFT's vault |
+| `get_core_vault_balances` | Get Core Vault balances for an NFT |
+| `get_rewards_vault_balances` | Get Rewards Vault balances for an NFT |
+| `get_vault_balances` | Get combined balances (both vaults) |
 | `vault_exists` | Check if an NFT has a vault |
-| `last_sale_used_vault_royalty` | Compliance tracking for marketplace sales |
+| `is_vault_redeemable` | Check if Core Vault can be redeemed |
 
 ## Architecture
 
@@ -75,16 +84,17 @@ cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 │                    NFT (Token Object)                   │
 │  ┌───────────────────────────────────────────────────┐  │
 │  │                    VaultInfo                      │  │
-│  │  • is_redeemable: bool                           │  │
-│  │  • vault_stores: SmartTable<FA, Store>           │  │
+│  │  • is_core_redeemable: bool                      │  │
+│  │  • core_stores: SmartTable<FA, Store>            │  │
+│  │  • rewards_stores: SmartTable<FA, Store>         │  │
 │  │  • extend_ref / delete_ref / burn_ref            │  │
 │  └───────────────────────────────────────────────────┘  │
 │                          │                              │
 │        ┌─────────────────┼─────────────────┐            │
 │        ▼                 ▼                 ▼            │
 │   ┌─────────┐      ┌─────────┐      ┌─────────┐        │
-│   │FA Store │      │FA Store │      │FA Store │        │
-│   │ (CEDRA) │      │ (USDC)  │      │ (APT)   │        │
+│   │🔒 CORE  │      │🎁 REWARD│      │🎁 REWARD│        │
+│   │ (CEDRA) │      │ (CEDRA) │      │ (USDC)  │        │
 │   └─────────┘      └─────────┘      └─────────┘        │
 └─────────────────────────────────────────────────────────┘
 ```
@@ -116,16 +126,16 @@ CVN-1/
 
 ## Royalty Model
 
-CVN-1 implements a dual-royalty system:
+CVN-1 v3 implements a dual-royalty system where vault royalties go to the Rewards Vault:
 
 | Royalty Type | Recipient | Purpose |
 |--------------|-----------|---------|
 | **Creator Royalty** | Creator payout address | Standard creator compensation |
-| **Vault Royalty** | NFT's vault | Automatic value accumulation |
+| **Vault Royalty** | NFT's **Rewards Vault** | Claimable by owner anytime |
 
 Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
 - Creator receives: 2.5 CEDRA
-- NFT vault receives: 2.5 CEDRA  
+- NFT Rewards Vault receives: 2.5 CEDRA (holder can claim)
 - Seller receives: 95 CEDRA
 
 ## Documentation
