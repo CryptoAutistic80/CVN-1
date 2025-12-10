@@ -51,7 +51,8 @@ export default function ExplorePage() {
     const [walletNfts, setWalletNfts] = useState<NFT[]>([]);
     const [loadingNfts, setLoadingNfts] = useState(false);
 
-    const isOwner = connected && account?.address?.toString() === vaultInfo?.creator;
+    // Check if current user owns this NFT (not just if they created the collection)
+    const isOwner = connected && walletNfts.some(nft => nft.address === nftAddress);
 
     // Load collections on mount
     useEffect(() => {
