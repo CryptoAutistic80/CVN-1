@@ -13,6 +13,7 @@ module cvn1_vault::minting {
     
     use cedra_token_objects::collection::{Self, Collection};
     use cedra_token_objects::token::{Self, Token};
+    use cedra_token_objects::royalty;
     
     use cedra_std::math64;
     
@@ -55,13 +56,13 @@ module cvn1_vault::minting {
         let collection_obj = object::address_to_object<Collection>(collection_addr);
         let collection_name = collection::name(collection_obj);
         
-        // Create the NFT
+        // Create the NFT (v5: inherit royalty from collection)
         let constructor_ref = token::create_named_token(
             creator,
             collection_name,
             description,
             name,
-            option::none(),
+            royalty::get(collection_obj),
             uri,
         );
         
@@ -137,13 +138,13 @@ module cvn1_vault::minting {
         let collection_obj = object::address_to_object<Collection>(collection_addr);
         let collection_name = collection::name(collection_obj);
         
-        // Create the NFT
+        // Create the NFT (v5: inherit royalty from collection)
         let constructor_ref = token::create_named_token(
             creator,
             collection_name,
             description,
             name,
-            option::none(),
+            royalty::get(collection_obj),
             uri,
         );
         
@@ -219,12 +220,13 @@ module cvn1_vault::minting {
         
         // Use create_token_as_collection_owner - validates owner(collection) == signer
         // Since we transferred collection ownership to itself, collection_signer is the owner
+        // v5: inherit royalty from collection for marketplace discovery
         let constructor_ref = token::create_token_as_collection_owner(
             &collection_signer,
             collection_obj,  // Pass Object<Collection> directly
             description,
             token_name,
-            option::none(), // royalty
+            royalty::get(collection_obj),
             uri,
         );
         
