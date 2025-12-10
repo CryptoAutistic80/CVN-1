@@ -29,7 +29,8 @@ export function VaultActions({
     const [showBurnConfirm, setShowBurnConfirm] = useState(false);
 
     // Default FA (CEDRA native coin metadata address on testnet)
-    const defaultFa = "0xa";
+    // Using full-length address to ensure wallet simulation works for all accounts
+    const defaultFa = "0x000000000000000000000000000000000000000000000000000000000000000a";
 
     const handleDeposit = async () => {
         if (!depositAmount || isNaN(Number(depositAmount))) return;

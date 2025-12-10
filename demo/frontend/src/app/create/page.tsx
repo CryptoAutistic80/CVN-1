@@ -6,8 +6,8 @@ import { ConnectButton } from "@/components/ConnectButton";
 import { useWallet } from "@/components/wallet-provider";
 import { CVN1_ADDRESS, getCollectionAddrFromTx, buildInitCollectionPayload } from "@/lib/cvn1";
 
-// CEDRA native coin FA metadata address
-const CEDRA_FA = "0xa";
+// Full-length CEDRA FA metadata address (padded to 64 chars)
+const CEDRA_FA = "0x000000000000000000000000000000000000000000000000000000000000000a";
 
 interface CollectionConfig {
     name: string;
