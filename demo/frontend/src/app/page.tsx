@@ -13,7 +13,7 @@ export default function Home() {
           <div className="flex items-center gap-3">
             <span className="text-2xl">💎</span>
             <h1 className="text-xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-              CVN-1 v3
+              CVN-1 v5
             </h1>
           </div>
           <ConnectButton />
@@ -34,7 +34,7 @@ export default function Home() {
           </span>
         </h2>
         <p className="text-slate-400 text-xl max-w-2xl mx-auto mb-12">
-          CVN-1 v3 introduces dual vaults: <strong className="text-indigo-400">Core</strong> for long-term value and{" "}
+          CVN-1 v5 introduces dual vaults: <strong className="text-indigo-400">Core</strong> for long-term value and{" "}
           <strong className="text-emerald-400">Rewards</strong> for claimable income.
         </p>
 

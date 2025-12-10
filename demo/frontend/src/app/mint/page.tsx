@@ -41,8 +41,9 @@ function MintPageContent() {
     const [mintedNFTs, setMintedNFTs] = useState<NFT[]>([]);
     const [error, setError] = useState<string | null>(null);
     const [nftName, setNftName] = useState("Vaulted NFT");
-    const [nftDescription, setNftDescription] = useState("Minted via CVN-1 v3 Playground");
+    const [nftDescription, setNftDescription] = useState("Minted via CVN-1 v5 Playground");
     const [manualAddr, setManualAddr] = useState("");
+    const [collectionName, setCollectionName] = useState<string>("");
 
     useEffect(() => {
         if (!collectionAddr) {
@@ -90,8 +91,9 @@ function MintPageContent() {
         }
     };
 
-    const handleSelectCollection = (addr: string) => {
+    const handleSelectCollection = (addr: string, name?: string) => {
         setCollectionAddr(addr);
+        if (name) setCollectionName(name);
         router.push(`/mint?collection=${addr}`);
     };
 
@@ -151,7 +153,7 @@ function MintPageContent() {
                     <Link href="/" className="flex items-center gap-3 hover:opacity-80 transition-opacity">
                         <span className="text-2xl">💎</span>
                         <span className="text-xl font-bold bg-gradient-to-r from-violet-400 to-fuchsia-400 bg-clip-text text-transparent">
-                            CVN-1 v3
+                            CVN-1 v5
                         </span>
                     </Link>
                     <div className="flex items-center gap-4">
@@ -181,7 +183,7 @@ function MintPageContent() {
                                 {availableCollections.map((col) => (
                                     <button
                                         key={col.address}
-                                        onClick={() => handleSelectCollection(col.address)}
+                                        onClick={() => handleSelectCollection(col.address, col.name)}
                                         className="bg-slate-800/50 border border-slate-700/50 rounded-2xl p-6 text-left hover:border-violet-500 hover:bg-slate-800 transition-all group"
                                     >
                                         <div className="flex items-start justify-between mb-4">
@@ -240,7 +242,11 @@ function MintPageContent() {
                         <div className="text-center mb-10">
                             <h1 className="text-4xl font-bold text-white mb-3">Mint NFT</h1>
                             <p className="text-slate-400">
-                                Minting from: <span className="font-mono text-violet-400">{collectionAddr.slice(0, 8)}...</span>
+                                Minting from: {collectionName ? (
+                                    <span className="font-semibold text-violet-400">{collectionName}</span>
+                                ) : (
+                                    <span className="font-mono text-violet-400">{collectionAddr.slice(0, 8)}...</span>
+                                )}
                             </p>
                         </div>
 
