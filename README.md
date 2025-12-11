@@ -2,19 +2,19 @@
 
 > A standard for NFTs with embedded on-chain treasuries on the Cedra Network
 
-[![Version](https://img.shields.io/badge/Version-4.2.0-green.svg)](CHANGELOG.md)
+[![Version](https://img.shields.io/badge/Version-5.0.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
-[![Tests](https://img.shields.io/badge/Tests-35%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-34%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
-CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasuries. v4 adds **collection size limits** and fixes public minting:
+CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungible asset (FA) treasuries. v5 adds **framework royalty integration** for automatic marketplace enforcement:
 
 | Vault | Purpose | Redemption |
 |-------|---------|------------|
 | **Core Vault** | Long-term floor value, mint seed | Burn NFT only |
-| **Rewards Vault** | Short-term, royalties, activity rewards | Claim anytime |
+| **Rewards Vault** | Short-term, deposits, activity rewards | Claim anytime |
 
 ### Key Features
 
@@ -23,7 +23,7 @@ CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungib
 - 💰 **Open Deposits** — Anyone can deposit to either vault
 - 🎁 **Claim Rewards** — Holders claim Rewards Vault without burning
 - 🔥 **Burn to Redeem** — Destroy NFT to claim BOTH vaults
-- 💎 **Vault Royalties** — Secondary sales grow Rewards Vault
+- 💎 **Framework Royalties** — Automatic marketplace royalty enforcement
 
 ## Quick Start
 
@@ -64,7 +64,7 @@ cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 | `deposit_to_rewards_vault` | Deposit FA to NFT's Rewards Vault |
 | `claim_rewards` | Claim Rewards Vault without burning |
 | `burn_and_redeem` | Burn NFT and claim both vaults |
-| `settle_sale_with_vault_royalty` | Marketplace settlement (royalties → Rewards Vault) |
+
 
 ### View Functions
 
@@ -111,7 +111,7 @@ CVN-1/
 │       ├── collection.move       # Collection init
 │       ├── minting.move          # Mint functions
 │       ├── vault_ops.move        # Vault operations
-│       ├── royalties.move        # Royalty settlement
+
 │       ├── vault_views.move      # View functions
 │       └── tests/                # Unit tests
 ├── sdk/typescript/           # TypeScript SDK
@@ -126,17 +126,18 @@ CVN-1/
 
 ## Royalty Model
 
-CVN-1 v3 implements a dual-royalty system where vault royalties go to the Rewards Vault:
+CVN-1 v5 uses **Cedra Framework royalties** for automatic marketplace enforcement:
 
 | Royalty Type | Recipient | Purpose |
 |--------------|-----------|---------|
 | **Creator Royalty** | Creator payout address | Standard creator compensation |
-| **Vault Royalty** | NFT's **Rewards Vault** | Claimable by owner anytime |
 
-Example: With 2.5% creator + 2.5% vault royalties on a 100 CEDRA sale:
-- Creator receives: 2.5 CEDRA
-- NFT Rewards Vault receives: 2.5 CEDRA (holder can claim)
-- Seller receives: 95 CEDRA
+Royalties are now set on-chain using `cedra_token_objects::royalty`, allowing any Cedra marketplace to automatically discover and enforce royalty rates.
+
+**Vaults receive value from:**
+- Mint-time seeding (% of mint price)
+- Direct deposits (staking, gaming, rewards)
+- Smart contract integrations
 
 ## Documentation
 

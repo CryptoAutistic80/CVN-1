@@ -1,4 +1,4 @@
-# CVN-1 TypeScript Integration Guide (v3)
+# CVN-1 TypeScript Integration Guide (v5)
 
 > Examples using `@cedra-labs/ts-sdk` to interact with CVN-1 dual vault NFTs.
 
@@ -11,9 +11,12 @@ const config = new CedraConfig({ network: Network.TESTNET });
 const cedra = new Cedra(config);
 
 const CVN1_ADDRESS = "0x..."; // Your deployed CVN-1 address
+
+// Full-length CEDRA FA metadata address
+const CEDRA_FA = "0x000000000000000000000000000000000000000000000000000000000000000a";
 ```
 
-## Creating a Collection
+## Creating a Collection (v5)
 
 ```typescript
 async function createCollection(creator: Account) {
@@ -25,13 +28,14 @@ async function createCollection(creator: Account) {
         "My Vaulted Collection",
         "A collection with dual vaults",
         "https://example.com/meta",
-        250,   // creator_royalty_bps (2.5%)
-        250,   // vault_royalty_bps (2.5% → rewards vault)
+        500,   // creator_royalty_bps (5% - enforced by framework)
+        0,     // vault_royalty_bps (unused in v5, pass 0)
         5000,  // mint_vault_bps (50% → core vault)
-        1000000,
-        "0x1::cedra_coin::CedraCoin",
-        [],
-        creator.accountAddress,
+        1000000, // mint_price in octas
+        CEDRA_FA,
+        [],    // allowed_assets (empty = all allowed)
+        creator.accountAddress.toString(), // creator_payout_addr
+        0,     // max_supply (0 = unlimited)
       ],
     },
   });
@@ -42,7 +46,7 @@ async function createCollection(creator: Account) {
   const collectionAddr = await cedra.view({
     payload: {
       function: `${CVN1_ADDRESS}::collection::get_collection_address`,
-      functionArguments: [creator.accountAddress, "My Vaulted Collection"],
+      functionArguments: [creator.accountAddress.toString(), "My Vaulted Collection"],
     },
   });
   
@@ -55,6 +59,7 @@ async function createCollection(creator: Account) {
 ```typescript
 async function publicMint(buyer: Account, collectionAddr: string) {
   // mint_vault_bps % of mint price goes to CORE vault
+  // NFT inherits framework royalty from collection (v5)
   const txn = await cedra.transaction.build.simple({
     sender: buyer.accountAddress,
     data: {
@@ -74,7 +79,7 @@ async function publicMint(buyer: Account, collectionAddr: string) {
 }
 ```
 
-## Vault Operations (v3)
+## Vault Operations
 
 ### Deposit to Core Vault (Long-term)
 
@@ -84,7 +89,7 @@ async function depositToCore(depositor: Account, nftAddr: string, amount: bigint
     sender: depositor.accountAddress,
     data: {
       function: `${CVN1_ADDRESS}::vault_ops::deposit_to_core_vault`,
-      functionArguments: [nftAddr, "0x1::cedra_coin::CedraCoin", amount.toString()],
+      functionArguments: [nftAddr, CEDRA_FA, amount.toString()],
     },
   });
 
@@ -101,7 +106,7 @@ async function depositToRewards(depositor: Account, nftAddr: string, amount: big
     sender: depositor.accountAddress,
     data: {
       function: `${CVN1_ADDRESS}::vault_ops::deposit_to_rewards_vault`,
-      functionArguments: [nftAddr, "0x1::cedra_coin::CedraCoin", amount.toString()],
+      functionArguments: [nftAddr, CEDRA_FA, amount.toString()],
     },
   });
 
@@ -145,7 +150,7 @@ async function burnAndRedeem(owner: Account, nftAddr: string) {
 }
 ```
 
-## View Functions (v3)
+## View Functions
 
 ### Get Core Vault Balances
 
@@ -189,33 +194,46 @@ async function getTotalBalances(nftAddr: string) {
 }
 ```
 
-## Marketplace (Royalties → Rewards Vault)
+### Check If Vault Exists
 
 ```typescript
-async function settleCompliantSale(
-  marketplace: Account,
-  nftAddr: string,
-  buyerAddr: string,
-  grossAmount: bigint
-) {
-  // vault_royalty_bps % goes to REWARDS vault
-  const txn = await cedra.transaction.build.simple({
-    sender: marketplace.accountAddress,
-    data: {
-      function: `${CVN1_ADDRESS}::royalties::settle_sale_with_vault_royalty`,
-      functionArguments: [
-        nftAddr,
-        buyerAddr,
-        "0x1::cedra_coin::CedraCoin",
-        grossAmount.toString(),
-      ],
+async function vaultExists(nftAddr: string): Promise<boolean> {
+  const result = await cedra.view({
+    payload: {
+      function: `${CVN1_ADDRESS}::vault_views::vault_exists`,
+      functionArguments: [nftAddr],
     },
   });
-
-  const result = await cedra.signAndSubmitTransaction({ signer: marketplace, transaction: txn });
-  return result.hash;
+  return result[0] as boolean;
 }
 ```
+
+## Royalties (v5)
+
+In v5, royalties are handled by the **Cedra Framework** automatically. Marketplaces discover royalties via the standard API:
+
+```typescript
+async function getFrameworkRoyalty(tokenOrCollectionAddr: string) {
+  const result = await cedra.view({
+    payload: {
+      function: "0x4::royalty::get",
+      typeArguments: ["0x4::token::Token"],
+      functionArguments: [tokenOrCollectionAddr],
+    },
+  });
+  
+  if (result[0]) {
+    const royalty = result[0] as { numerator: string; denominator: string; payee_address: string };
+    return {
+      percentage: (Number(royalty.numerator) / Number(royalty.denominator)) * 100,
+      payee: royalty.payee_address,
+    };
+  }
+  return null;
+}
+```
+
+> **Note:** Custom `settle_sale_with_vault_royalty` was removed in v5. Use standard marketplace settlement with framework royalty enforcement.
 
 ## Summary
 
@@ -224,6 +242,11 @@ async function settleCompliantSale(
 | Mint | `public_mint` | Core |
 | Deposit long-term | `deposit_to_core_vault` | Core |
 | Deposit short-term | `deposit_to_rewards_vault` | Rewards |
-| Settle sale | `settle_sale_with_vault_royalty` | Rewards |
 | Claim rewards | `claim_rewards` | Rewards |
 | Burn & redeem | `burn_and_redeem` | Both |
+
+## v5 Migration Notes
+
+- `vault_royalty_bps` parameter is ignored - pass 0
+- Royalties are now framework-enforced, no custom settlement needed
+- `settle_sale_with_vault_royalty` was removed

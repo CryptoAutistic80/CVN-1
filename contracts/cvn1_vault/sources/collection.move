@@ -7,6 +7,7 @@ module cvn1_vault::collection {
     use std::option;
     use cedra_framework::object;
     use cedra_token_objects::collection;
+    use cedra_token_objects::royalty;
     
     use cvn1_vault::vault_core;
 
@@ -54,12 +55,24 @@ module cvn1_vault::collection {
             vault_core::err_invalid_royalty_bps()
         );
         
+        // Create framework royalty for marketplace discovery (v5)
+        // Only creator_royalty_bps is used - vault receives value from other sources
+        let royalty_opt = if (creator_royalty_bps > 0) {
+            option::some(royalty::create(
+                (creator_royalty_bps as u64),
+                10000,  // denominator (basis points)
+                creator_payout_addr
+            ))
+        } else {
+            option::none()
+        };
+        
         // Create unlimited collection and get constructor ref
         let constructor_ref = collection::create_unlimited_collection(
             creator,
             collection_description,
             collection_name,
-            option::none(),
+            royalty_opt,
             collection_uri,
         );
         

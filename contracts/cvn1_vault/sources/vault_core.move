@@ -21,7 +21,6 @@ module cvn1_vault::vault_core {
     friend cvn1_vault::collection;
     friend cvn1_vault::minting;
     friend cvn1_vault::vault_ops;
-    friend cvn1_vault::royalties;
     friend cvn1_vault::vault_views;
 
     // ============================================

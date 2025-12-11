@@ -1,20 +1,29 @@
-# CVN-1 Marketplace Integration Guide (v3)
+# CVN-1 Marketplace Integration Guide (v5)
 
-> How marketplaces can support CVN-1 vaulted NFTs with compliant royalty settlement.
+> How marketplaces can support CVN-1 vaulted NFTs with framework royalties.
 
 ## Overview
 
-CVN-1 v3 provides a standardized sale path with **dual vaults**:
-1. **Creator** — Direct payment to creator's payout address
-2. **Rewards Vault** — Royalties deposited (owner can claim anytime)
-3. **Seller** — Net proceeds to the current owner
+CVN-1 v5 uses **Cedra Framework royalties** for automatic enforcement:
+
+- **Creator Royalties** — Enforced automatically via `cedra_token_objects::royalty`
+- **Vaults** — Receive value from minting, staking, and direct deposits
+- **No Custom Settlement** — Standard Cedra NFT sales work out of the box
 
 ## Why Integrate CVN-1?
 
 - **Increased Trade Value** — Vault assets make NFTs more valuable over time
-- **Compliance Tracking** — Verifiable on-chain compliance status
+- **Standard Royalties** — Use Cedra's built-in royalty enforcement
 - **Community Trust** — Show users you respect creator economics
 - **Standard API** — One integration covers all CVN-1 collections
+
+## v5 Changes from v4
+
+| v4 | v5 |
+|----|-----|
+| Custom `settle_sale_with_vault_royalty` | Standard transfer + framework royalties |
+| Vault receives % of sales | Vault receives value from other sources |
+| Custom compliance tracking | Framework royalty enforcement |
 
 ## Integration Flow
 
@@ -25,16 +34,16 @@ CVN-1 v3 provides a standardized sale path with **dual vaults**:
 │                                                                  │
 │  1. Buyer purchases NFT for 100 CEDRA                           │
 │     ↓                                                            │
-│  2. Marketplace collects payment (holds 100 CEDRA)              │
+│  2. Marketplace discovers royalty via framework API              │
+│     • Calls royalty::get(collection_or_token)                   │
 │     ↓                                                            │
-│  3. Marketplace calls settle_sale_with_vault_royalty            │
-│     ↓                                                            │
-│  4. CVN-1 atomically:                                           │
-│     • Creator gets 2.5 CEDRA (2.5% royalty)                     │
-│     • REWARDS vault gets 2.5 CEDRA (claimable!)                 │
+│  3. Standard settlement:                                         │
+│     • Creator gets 5 CEDRA (5% royalty - framework enforced)    │
 │     • Seller gets 95 CEDRA (net proceeds)                       │
 │     • NFT transfers to buyer                                    │
-│     • Compliance flag set to TRUE                               │
+│                                                                  │
+│  CVN-1 vaults are NOT funded from secondary sales.              │
+│  Vaults receive value from: minting, staking, direct deposits   │
 │                                                                  │
 └─────────────────────────────────────────────────────────────────┘
 ```
@@ -87,12 +96,36 @@ async function getListingInfo(nftAddr: string) {
 }
 ```
 
-## Step 3: Get Collection Royalty Config
+## Step 3: Get Collection Royalty
 
-Fetch the royalty settings for the collection:
+Use Cedra's framework royalty API to discover royalties:
 
 ```typescript
+import { royalty } from "@cedra-labs/ts-sdk";
+
 async function getCollectionRoyalties(collectionAddr: string) {
+  // Get royalty from framework
+  const royaltyInfo = await cedra.view({
+    payload: {
+      function: "0x4::royalty::get",
+      typeArguments: ["0x4::collection::Collection"],
+      functionArguments: [collectionAddr],
+    },
+  });
+
+  if (royaltyInfo[0]) {
+    const { numerator, denominator, payee_address } = royaltyInfo[0];
+    return {
+      royaltyBps: (Number(numerator) / Number(denominator)) * 10000,
+      payeeAddress: payee_address,
+    };
+  }
+  
+  return { royaltyBps: 0, payeeAddress: null };
+}
+
+// CVN-1 specific config (for vault display)
+async function getCVN1Config(collectionAddr: string) {
   const result = await cedra.view({
     payload: {
       function: `${CVN1_ADDRESS}::vault_views::get_vault_config`,
@@ -102,47 +135,37 @@ async function getCollectionRoyalties(collectionAddr: string) {
 
   return {
     creatorRoyaltyBps: Number(result[0]),
-    vaultRoyaltyBps: Number(result[1]),
+    mintVaultBps: Number(result[1]),  // Note: vaultRoyaltyBps removed in v5
     allowedAssets: result[2] as string[],
     creatorPayoutAddr: result[3] as string,
   };
 }
-
-// Calculate fees for display
-function calculateFees(grossAmount: bigint, config: { creatorRoyaltyBps: number; vaultRoyaltyBps: number }) {
-  const creatorFee = (grossAmount * BigInt(config.creatorRoyaltyBps)) / 10000n;
-  const vaultFee = (grossAmount * BigInt(config.vaultRoyaltyBps)) / 10000n;
-  const sellerNet = grossAmount - creatorFee - vaultFee;
-  
-  return { creatorFee, vaultFee, sellerNet };
-}
 ```
 
-## Step 4: Settle Sale with Vault Royalty
+## Step 4: Execute Sale
 
-**This is the critical integration point.** When a sale completes, call this function instead of `object::transfer`:
+Use standard Cedra NFT transfer. The framework handles royalty enforcement:
 
 ```typescript
 async function completeSale(
   marketplace: Account,
   nftAddr: string,
+  sellerAddr: string,
   buyerAddr: string,
-  paymentFaAddr: string,  // FA used for payment (e.g., CEDRA, USDC)
-  grossAmount: bigint      // Full sale price
+  price: bigint
 ) {
-  // IMPORTANT: Marketplace must hold the gross amount before calling
+  // Standard transfer - framework enforces royalties
   const txn = await cedra.transaction.build.simple({
     sender: marketplace.accountAddress,
     data: {
-      function: `${CVN1_ADDRESS}::royalties::settle_sale_with_vault_royalty`,
-      functionArguments: [
-        nftAddr,
-        buyerAddr,
-        paymentFaAddr,
-        grossAmount.toString(),
-      ],
+      function: "0x1::object::transfer",
+      typeArguments: ["0x4::token::Token"],
+      functionArguments: [nftAddr, buyerAddr],
     },
   });
+
+  // Handle payment separately (marketplace-specific)
+  // Framework royalties are enforced by the Cedra protocol
 
   const result = await cedra.signAndSubmitTransaction({
     signer: marketplace,
@@ -151,43 +174,41 @@ async function completeSale(
 
   await cedra.waitForTransaction({ transactionHash: result.hash });
 
-  return {
-    txHash: result.hash,
-    isCompliant: true,
-  };
+  return { txHash: result.hash };
 }
 ```
 
-### Prerequisites for `settle_sale_with_vault_royalty`
+> **Note:** The specific royalty enforcement mechanism depends on your marketplace implementation and how Cedra's framework royalties are integrated. Consult Cedra documentation for the latest patterns.
 
-1. **Marketplace holds funds** — The `gross_amount` must be in the marketplace's account
-2. **Payment FA matches** — Use the correct FA metadata address for the payment currency
-3. **NFT exists** — The NFT must be a valid CVN-1 NFT with a vault
+## Step 5: Display Vault Value
 
-## Step 5: Show Compliance Badge
-
-Display compliance status to users:
+Show vault contents as additional NFT value:
 
 ```typescript
-async function getComplianceStatus(nftAddr: string): Promise<{
-  isCompliant: boolean;
-  message: string;
-}> {
-  const result = await cedra.view({
+async function getTotalVaultValue(nftAddr: string): Promise<string> {
+  const coreResult = await cedra.view({
     payload: {
-      function: `${CVN1_ADDRESS}::vault_views::last_sale_used_vault_royalty`,
+      function: `${CVN1_ADDRESS}::vault_views::get_core_vault_balances`,
+      functionArguments: [nftAddr],
+    },
+  });
+  
+  const rewardsResult = await cedra.view({
+    payload: {
+      function: `${CVN1_ADDRESS}::vault_views::get_rewards_vault_balances`,
       functionArguments: [nftAddr],
     },
   });
 
-  const isCompliant = result[0] as boolean;
+  const coreBalances = coreResult[0] as { balance: string }[];
+  const rewardsBalances = rewardsResult[0] as { balance: string }[];
   
-  return {
-    isCompliant,
-    message: isCompliant
-      ? "✓ Last sale used compliant CVN-1 settlement"
-      : "⚠ Last sale bypassed vault royalties",
-  };
+  let totalOctas = 0n;
+  for (const b of [...coreBalances, ...rewardsBalances]) {
+    totalOctas += BigInt(b.balance);
+  }
+  
+  return `${Number(totalOctas) / 1e8} CEDRA`;
 }
 ```
 
@@ -206,45 +227,49 @@ async function getComplianceStatus(nftAddr: string): Promise<{
 │                                        │
 │  ┌──────────────────────────────────┐ │
 │  │ 💎 Vault Contents                 │ │
-│  │ • 25.5 CEDRA                     │ │
-│  │ • 10 USDC                        │ │
-│  │ Floor Value: ~$35.50             │ │
+│  │ 🔒 Core:    15.5 CEDRA           │ │
+│  │ 🎁 Rewards:  5.0 CEDRA           │ │
+│  │ Floor Value: ~$20.50              │ │
 │  └──────────────────────────────────┘ │
 │                                        │
-│  Fee Breakdown:                        │
-│  • Creator Royalty: 2.5 CEDRA (2.5%)  │
-│  • Vault Addition: 2.5 CEDRA (2.5%)   │
-│  • Seller Receives: 95 CEDRA          │
+│  Creator Royalty: 5%                   │
 │                                        │
 │  [Buy Now]                             │
 │                                        │
-│  ✓ CVN-1 Compliant Settlement         │
+│  ✓ Framework Royalties Enforced       │
 └────────────────────────────────────────┘
 ```
 
-### Compliance Badge
+### Vault Badges
 
 ```
-✓ Compliant   — Green badge for compliant sales
-⚠ Non-Compliant — Yellow warning for bypassed royalties
+🔒 Core Vault   — Burn-to-redeem only (floor value)
+🎁 Rewards      — Claim anytime by owner
 ```
 
 ## Error Handling
 
 | Error | Code | Action |
 |-------|------|--------|
-| `EVAULT_NOT_FOUND` | 8 | Not a CVN-1 NFT, use standard transfer |
+| `EVAULT_NOT_FOUND` | 8 | Not a CVN-1 NFT, no vault display needed |
 | `ECONFIG_NOT_FOUND` | 10 | Collection config missing |
-| `EINVALID_AMOUNT` | 4 | Check gross_amount > 0 |
 
-## Testing Checklist
+## Updated Checklist for v5
 
-- [ ] Detect CVN-1 NFTs correctly
-- [ ] Display vault balances on listings
-- [ ] Show royalty breakdown before purchase
-- [ ] Call `settle_sale_with_vault_royalty` on sale completion
-- [ ] Display compliance status
-- [ ] Handle non-CVN-1 NFTs gracefully (fallback to standard transfer)
+- [ ] Detect CVN-1 NFTs via `vault_exists`
+- [ ] Display dual vault balances on listings
+- [ ] Show creator royalty (via framework API)
+- [ ] Use standard transfer (framework enforces royalties)
+- [ ] Display total vault value as floor price indicator
+- [ ] Handle non-CVN-1 NFTs gracefully
+
+## Removed from v5
+
+The following are **no longer used**:
+
+- `settle_sale_with_vault_royalty` — Removed, use framework royalties
+- `vault_royalty_bps` — No longer affects secondary sales
+- Compliance tracking — Framework handles enforcement
 
 ## Support
 
