@@ -14,7 +14,7 @@ CVN-1 defines a standard for **vaulted NFTs** — NFTs that own their own fungib
 | Vault | Purpose | Redemption |
 |-------|---------|------------|
 | **Core Vault** | Long-term floor value, mint seed | Burn NFT only |
-| **Rewards Vault** | Short-term, royalties, activity rewards | Claim anytime |
+| **Rewards Vault** | Short-term, deposits, activity rewards | Claim anytime |
 
 ### Key Features
 

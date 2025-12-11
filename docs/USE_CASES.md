@@ -6,15 +6,18 @@ This document explores the various ways creators can leverage the CVN-1 standard
 
 ---
 
-## Configuration Options Recap
+## Configuration Options Recap (v5)
 
 | Parameter | Range | Description |
 |-----------|-------|-------------|
-| `mint_vault_bps` | 0-10000 | % of mint price seeded into vault |
+| `mint_vault_bps` | 0-10000 | % of mint price seeded into Core Vault |
 | `mint_price` | 0+ | Cost to mint (in smallest FA units) |
-| `creator_royalty_bps` | 0-10000 | % of secondary sales to creator |
-| `vault_royalty_bps` | 0-10000 | % of secondary sales to vault |
+| `creator_royalty_bps` | 0-10000 | % of secondary sales to creator (framework-enforced) |
+| `vault_royalty_bps` | N/A | **Unused in v5** - pass 0 |
 | `allowed_assets` | addresses | Whitelist of depositable tokens |
+| `max_supply` | 0+ | Maximum mintable (0 = unlimited) |
+
+> **v5 Note:** Vaults no longer receive % of secondary sales. Vaults are funded via mint seeding, direct deposits, and integrations.
 
 ---
 
@@ -26,14 +29,13 @@ This document explores the various ways creators can leverage the CVN-1 standard
 mint_price:        1000 USDC
 mint_vault_bps:    10000 (100%)
 creator_royalty:   500 (5%)
-vault_royalty:     250 (2.5%)
 ```
 
 **What happens:**
 - Collector pays 1000 USDC to mint
-- **100% (1000 USDC) goes directly into the NFT's vault**
-- Creator earns on secondary sales (5%)
-- Vault grows 2.5% on each resale
+- **100% (1000 USDC) goes directly into the NFT's Core Vault**
+- Creator earns on secondary sales (5% via framework royalties)
+- Vault can grow via direct deposits or integrations
 
 **Why it works:**
 - The NFT has provable floor value equal to mint price
@@ -50,18 +52,16 @@ vault_royalty:     250 (2.5%)
 mint_price:        50 CEDRA
 mint_vault_bps:    5000 (50%)
 creator_royalty:   250 (2.5%)
-vault_royalty:     250 (2.5%)
 ```
 
 **What happens:**
-- Each mint: 25 CEDRA → vault, 25 CEDRA → creator
-- Every secondary sale adds 2.5% to the NFT's vault
-- After 10 sales averaging 100 CEDRA each:
-  - Vault accumulated: 25 + (10 × 2.5) = **50 CEDRA**
+- Each mint: 25 CEDRA → Core Vault, 25 CEDRA → creator
+- Holders can deposit more to grow vault value
+- Games/dApps can deposit rewards to Rewards Vault
 
 **Why it works:**
 - Creates "savings account" energy for holders
-- Incentivizes diamond hands (vault grows while you hold)
+- Incentivizes diamond hands (vault grows via engagement)
 - Community can see collective vault value
 
 ---
@@ -73,14 +73,13 @@ vault_royalty:     250 (2.5%)
 ```
 mint_price:        100 GOLD_TOKEN
 mint_vault_bps:    8000 (80%)
-vault_royalty:     500 (5%)
 allowed_assets:    [GOLD_TOKEN, SILVER_TOKEN, GEM_TOKEN]
 is_redeemable:     true
 ```
 
 **What happens:**
-- Sword minted with 80 GOLD_TOKEN inside
-- Trading adds 5% more gold to the sword
+- Sword minted with 80 GOLD_TOKEN in Core Vault
+- Game can deposit rewards to Rewards Vault
 - Player can "salvage" sword to retrieve all gold
 - Only game currencies can be deposited
 
@@ -244,8 +243,8 @@ is_redeemable:     false
 **Use Case:** NFTs that compete based on vault size.
 
 ```
-vault_royalty:     500 (5%)
 allowed_assets:    [GAME_TOKEN]
+is_redeemable:     true
 ```
 
 **What happens:**
@@ -253,7 +252,7 @@ allowed_assets:    [GAME_TOKEN]
 - Deposit GAME_TOKEN to "power up"
 - Leaderboard tracks highest vault balances
 - Top vaults win tournament prizes
-- Each trade grows the vault
+- Game deposits rewards to top performers
 
 **Why it works:**
 - Gamified savings
@@ -262,20 +261,20 @@ allowed_assets:    [GAME_TOKEN]
 
 ---
 
-## Configuration Matrix
+## Configuration Matrix (v5)
 
-| Use Case | mint_vault_bps | vault_royalty | is_redeemable | allowed_assets |
-|----------|----------------|---------------|---------------|----------------|
-| Premium Art | 100% | 2.5% | ✅ | Any |
+| Use Case | mint_vault_bps | creator_royalty | is_redeemable | allowed_assets |
+|----------|----------------|-----------------|---------------|----------------|
+| Premium Art | 100% | 5% | ✅ | Any |
 | PFP Collection | 50% | 2.5% | ✅ | Any |
-| Game Items | 80% | 5% | ✅ | Game tokens |
+| Game Items | 80% | 0% | ✅ | Game tokens |
 | Charity | 0% | 0% | ❌ | N/A |
 | DeFi Basket | 0% | 0% | ✅ | Specified |
 | Music Shares | 0% | 0% | ✅ | USDC |
 | Piggy Bank | N/A | 0% | ✅ | Any |
 | Gift Card | 100% | 0% | ✅ | Store token |
 | Locked Savings | 100% | 0% | ❌ | Any |
-| Competitive | 0% | 5% | ✅ | Game token |
+| Competitive | 0% | 0% | ✅ | Game token |
 
 ---
 
@@ -297,10 +296,10 @@ Document exactly what happens at mint:
 - Useful for locked value but limits utility
 - Most use cases want redemption
 
-### 4. **Secondary Sale Strategy**
-- Higher `vault_royalty` = faster vault growth
-- But may discourage trading
-- Balance with `creator_royalty`
+### 4. **Vault Funding Strategy**
+- Mint seeding provides initial floor value
+- Integrate with games/dApps for ongoing deposits
+- Consider staking or reward mechanisms
 
 ### 5. **Asset Allowlists**
 - Empty = any FA allowed (spam risk)
@@ -309,7 +308,7 @@ Document exactly what happens at mint:
 
 ---
 
-## Example: Complete Collection Setup
+## Example: Complete Collection Setup (v5)
 
 ```move
 init_collection_config(
@@ -317,21 +316,22 @@ init_collection_config(
     "Vaulted Dragons",                   // name
     "Dragons with treasure hoards",      // description
     "https://dragons.io/collection",     // uri
-    250,                                 // 2.5% creator royalty
-    250,                                 // 2.5% vault royalty
-    5000,                                // 50% of mint → vault
+    500,                                 // 5% creator royalty (framework-enforced)
+    0,                                   // vault_royalty (unused in v5)
+    5000,                                // 50% of mint → Core Vault
     100_000_000,                         // 100 CEDRA mint price
     @cedra_fa_address,                   // pay in CEDRA
     vector[@cedra, @usdc, @gold],        // only these in vault
-    @treasury_wallet                     // creator payments
+    @treasury_wallet,                    // creator payments
+    10000                                // max supply (v4+)
 );
 ```
 
 Result:
 - Mint costs 100 CEDRA
-- 50 CEDRA seeds the dragon's hoard
+- 50 CEDRA seeds the dragon's Core Vault
 - 50 CEDRA goes to creator
-- Each sale adds 2.5% to the hoard
+- Secondary sales: 5% to creator (framework-enforced)
 - Holders can burn to claim treasure
 
 ---
