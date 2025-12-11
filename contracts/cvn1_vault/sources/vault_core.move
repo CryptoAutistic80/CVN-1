@@ -74,7 +74,7 @@ module cvn1_vault::vault_core {
     // Data Structures
     // ============================================
 
-    /// Configuration for a vaulted NFT collection (v4)
+    /// Configuration for a vaulted NFT collection (v6)
     /// Stored under the collection object's address
     struct VaultedCollectionConfig has key {
         /// Creator royalty in basis points (10000 = 100%)
@@ -97,6 +97,8 @@ module cvn1_vault::vault_core {
         max_supply: u64,
         /// Current count of minted tokens
         minted_count: u64,
+        /// v6: Fee splitter address for royalty distribution (0x0 if not using splitter)
+        fee_splitter_addr: address,
     }
 
     /// Per-NFT vault information (v3: Dual Vault Architecture)
@@ -203,6 +205,13 @@ module cvn1_vault::vault_core {
             config.allowed_assets,
             config.creator_payout_addr,
         )
+    }
+
+    /// Get fee splitter address for a collection (v6)
+    public fun get_fee_splitter_addr(addr: address): address
+    acquires VaultedCollectionConfig {
+        let config = borrow_global<VaultedCollectionConfig>(addr);
+        config.fee_splitter_addr
     }
 
     // ============================================
@@ -354,7 +363,7 @@ module cvn1_vault::vault_core {
     // Constructor Functions (friend-only)
     // ============================================
 
-    /// Create and store a new VaultedCollectionConfig (v4)
+    /// Create and store a new VaultedCollectionConfig (v6)
     public(friend) fun create_and_store_config(
         signer: &signer,
         creator_royalty_bps: u16,
@@ -366,6 +375,7 @@ module cvn1_vault::vault_core {
         creator_payout_addr: address,
         collection_extend_ref: ExtendRef,
         max_supply: u64,
+        fee_splitter_addr: address,
     ) {
         move_to(signer, VaultedCollectionConfig {
             creator_royalty_bps,
@@ -378,6 +388,7 @@ module cvn1_vault::vault_core {
             collection_extend_ref,
             max_supply,
             minted_count: 0,
+            fee_splitter_addr,
         });
     }
 

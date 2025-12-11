@@ -37,7 +37,8 @@ module cvn1_vault::collection_tests {
             @0x0, // no mint currency
             vector::empty(),
             @0x123,
-            0  // max_supply: 0 = unlimited
+            0,  // max_supply: 0 = unlimited
+            @0x999,  // protocol_vault_addr
         );
         
         let collection_addr = get_collection_address(
@@ -70,7 +71,8 @@ module cvn1_vault::collection_tests {
             @0x0,  // currency
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
     }
 
@@ -86,7 +88,8 @@ module cvn1_vault::collection_tests {
             250, 250, 0, 0, @0x0,
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
         
         // Second creation with same name should fail with ECOLLECTION_ALREADY_EXISTS
@@ -98,7 +101,8 @@ module cvn1_vault::collection_tests {
             500, 500, 0, 0, @0x0,
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
     }
 
@@ -116,7 +120,8 @@ module cvn1_vault::collection_tests {
             0, @0x0,
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -140,7 +145,8 @@ module cvn1_vault::collection_tests {
             250, 250, 0, 0, @0x0,
             allowed,
             @0x123,
-            0
+            0,
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -163,7 +169,8 @@ module cvn1_vault::collection_tests {
             0, 0, 0, 0, @0x0, // all zeros = no royalties, free mint
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -190,7 +197,8 @@ module cvn1_vault::collection_tests {
             0, @0x0,
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
     }
 
@@ -208,7 +216,8 @@ module cvn1_vault::collection_tests {
             @0xABC, // some FA address
             vector::empty(),
             @0x123,
-            0
+            0,
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -234,7 +243,8 @@ module cvn1_vault::collection_tests {
             250, 250, 0, 0, @0x0,
             vector::empty(),
             @0x123,
-            100  // max_supply = 100
+            100,  // max_supply = 100
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -261,7 +271,8 @@ module cvn1_vault::collection_tests {
             250, 250, 0, 0, @0x0,
             vector::empty(),
             @0x123,
-            0  // max_supply = 0 (unlimited)
+            0,  // max_supply = 0 (unlimited)
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -295,7 +306,8 @@ module cvn1_vault::collection_tests {
             250, 250, 0, 0, @0x0,
             vector::empty(),
             @0x123,
-            1  // max_supply = 1
+            1,  // max_supply = 1
+            @0x999,
         );
         
         let collection_addr = get_collection_address(
@@ -320,7 +332,8 @@ module cvn1_vault::collection_tests {
             250, 250, 0, 0, @0x0,
             vector::empty(),
             @0x123,
-            1000000  // 1 million max supply
+            1000000,  // 1 million max supply
+            @0x999,
         );
         
         let collection_addr = get_collection_address(

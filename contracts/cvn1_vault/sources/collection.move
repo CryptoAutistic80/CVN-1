@@ -10,14 +10,16 @@ module cvn1_vault::collection {
     use cedra_token_objects::royalty;
     
     use cvn1_vault::vault_core;
+    use cvn1_vault::fee_splitter;
 
     // ============================================
     // Entry Functions
     // ============================================
 
-    /// Initialize a new vaulted NFT collection with configuration (v4)
+    /// Initialize a new vaulted NFT collection with configuration (v6)
     /// 
     /// Creates an unlimited collection and stores the CVN-1 config on the collection object.
+    /// Deploys a fee splitter for royalty distribution between creator and protocol vault.
     /// 
     /// NOTE: Entry functions cannot return values in Move. After calling this,
     /// use `get_collection_address(creator, name)` to retrieve the collection address.
@@ -33,7 +35,8 @@ module cvn1_vault::collection {
         mint_price_fa: address,
         allowed_assets: vector<address>,
         creator_payout_addr: address,
-        max_supply: u64  // 0 = unlimited
+        max_supply: u64,  // 0 = unlimited
+        protocol_vault_addr: address,  // v6: Address for protocol's share of royalties
     ) {
         // Check if collection already exists for this creator with this name
         let creator_addr = signer::address_of(creator);
@@ -55,13 +58,36 @@ module cvn1_vault::collection {
             vault_core::err_invalid_royalty_bps()
         );
         
-        // Create framework royalty for marketplace discovery (v5)
-        // Only creator_royalty_bps is used - vault receives value from other sources
+        // v6: Create fee splitter for royalty distribution
+        // Total royalty = creator_royalty_bps, split between creator and vault
+        // vault_royalty_bps determines what portion goes to protocol vault
+        let creator_share = 10000 - (vault_royalty_bps as u64);  // Remainder to creator
+        let vault_share = (vault_royalty_bps as u64);
+        
+        let splitter_addr = if (vault_share > 0) {
+            // Create splitter with both recipients
+            let addresses = vector[creator_payout_addr, protocol_vault_addr];
+            let shares = vector[creator_share, vault_share];
+            fee_splitter::create_splitter(creator, addresses, shares)
+        } else {
+            // No vault share, use creator address directly (no splitter needed)
+            @0x0
+        };
+        
+        // Determine royalty payout address: splitter if created, otherwise creator
+        let royalty_payout = if (splitter_addr != @0x0) {
+            splitter_addr
+        } else {
+            creator_payout_addr
+        };
+        
+        // Create framework royalty for marketplace discovery (v6)
+        // Uses total creator_royalty_bps with payout to splitter for distribution
         let royalty_opt = if (creator_royalty_bps > 0) {
             option::some(royalty::create(
                 (creator_royalty_bps as u64),
                 10000,  // denominator (basis points)
-                creator_payout_addr
+                royalty_payout
             ))
         } else {
             option::none()
@@ -85,7 +111,7 @@ module cvn1_vault::collection {
         // Generate TransferRef to enable ownership transfer
         let transfer_ref = object::generate_transfer_ref(&constructor_ref);
         
-        // Create and store collection config with v4 fields
+        // Create and store collection config with v6 fields
         vault_core::create_and_store_config(
             &collection_signer,
             creator_royalty_bps,
@@ -97,6 +123,7 @@ module cvn1_vault::collection {
             creator_payout_addr,
             collection_extend_ref,
             max_supply,
+            splitter_addr,  // v6: store splitter address
         );
         
         // Transfer collection ownership to itself using TransferRef (v4.1 fix)
