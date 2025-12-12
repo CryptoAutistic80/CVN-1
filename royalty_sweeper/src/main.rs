@@ -89,6 +89,10 @@ enum Command {
 
 #[tokio::main]
 async fn main() -> Result<()> {
+    // Load .env file if present (from current dir or royalty_sweeper dir)
+    let _ = dotenvy::dotenv();
+    let _ = dotenvy::from_filename("royalty_sweeper/.env");
+
     let cli = Cli::parse();
 
     let api_client = Client::new(cli.cedra_node_url.clone());
