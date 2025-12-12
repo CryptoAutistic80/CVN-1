@@ -53,6 +53,45 @@ cedra move test --dev
 cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 ```
 
+## Running
+
+### Demo Frontend (Next.js)
+
+```bash
+cd demo/frontend
+npm install
+npm run dev
+```
+
+Open `http://localhost:3000`. The create page lets you set `creator_royalty_bps` and `vault_royalty_bps` (Core Vault share).
+
+### Royalty Sweeper Backend (Rust)
+
+Environment:
+- `CEDRA_NODE_URL` (default: `https://testnet.cedra.dev`)
+- `CEDRA_PRIVATE_KEY` (required; hex, `0x` prefix ok)
+- `CVN1_ADDRESS` (required; published package address, e.g. `0x...`)
+
+Watch + batch sweep:
+
+```bash
+cargo run --release --manifest-path royalty_sweeper/Cargo.toml -- \
+  watch \
+  --nfts-file nfts.txt \
+  --fa-metadata 0x... \
+  --interval-secs 5 \
+  --batch-size 20
+```
+
+One-shot sweep:
+
+```bash
+cargo run --release --manifest-path royalty_sweeper/Cargo.toml -- \
+  sweep-once \
+  --nft 0x... \
+  --fa-metadata 0x...
+```
+
 ## Contract API
 
 ### Entry Functions
