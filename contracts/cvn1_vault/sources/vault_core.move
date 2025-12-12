@@ -11,7 +11,9 @@ module cvn1_vault::vault_core {
     use std::vector;
     use cedra_framework::object::{Self, ExtendRef, DeleteRef, Object};
     use cedra_framework::fungible_asset::{Self, Metadata, FungibleStore, FungibleAsset};
+    use cedra_framework::primary_fungible_store;
     use cedra_token_objects::token::BurnRef;
+    use cedra_std::math64;
     use cedra_std::smart_table::{Self, SmartTable};
 
     // ============================================
@@ -49,6 +51,8 @@ module cvn1_vault::vault_core {
     const ECONFIG_NOT_FOUND: u64 = 10;
     /// Max supply reached for collection
     const EMAX_SUPPLY_REACHED: u64 = 11;
+    /// Royalty escrow not found for NFT
+    const EROYALTY_ESCROW_NOT_FOUND: u64 = 12;
     
     /// Maximum basis points (100%)
     const MAX_BPS: u64 = 10000;
@@ -69,6 +73,7 @@ module cvn1_vault::vault_core {
     public fun err_invalid_royalty_bps(): u64 { EINVALID_ROYALTY_BPS }
     public fun err_config_not_found(): u64 { ECONFIG_NOT_FOUND }
     public fun err_max_supply_reached(): u64 { EMAX_SUPPLY_REACHED }
+    public fun err_royalty_escrow_not_found(): u64 { EROYALTY_ESCROW_NOT_FOUND }
 
     // ============================================
     // Data Structures
@@ -144,6 +149,19 @@ module cvn1_vault::vault_core {
         last_sale_compliant: bool,
     }
 
+    /// Per-NFT royalty escrow reference (v6: Core Vault Royalties)
+    /// Stored under the NFT's object address.
+    ///
+    /// Royalties are paid to `escrow_addr` (token-level framework royalty payee).
+    /// Anyone can permissionlessly sweep those funds into:
+    /// - creator payout address
+    /// - the NFT's CORE vault
+    struct RoyaltyEscrowRef has key {
+        escrow_addr: address,
+        escrow_extend_ref: ExtendRef,
+        escrow_delete_ref: Option<DeleteRef>,
+    }
+
     /// Struct for returning vault balance info in views
     struct VaultBalance has copy, drop {
         fa_metadata_addr: address,
@@ -172,6 +190,11 @@ module cvn1_vault::vault_core {
     /// Check if vault exists at address
     public fun vault_exists(addr: address): bool {
         exists<VaultInfo>(addr)
+    }
+
+    /// Check if royalty escrow exists at address
+    public fun royalty_escrow_exists(addr: address): bool {
+        exists<RoyaltyEscrowRef>(addr)
     }
 
     // ============================================
@@ -500,8 +523,6 @@ module cvn1_vault::vault_core {
         nft_addr: address,
         owner_addr: address
     ): vector<address> acquires VaultInfo {
-        use cedra_framework::primary_fungible_store;
-        
         let vault_info = borrow_global_mut<VaultInfo>(nft_addr);
         let vault_signer = object::generate_signer_for_extending(&vault_info.extend_ref);
         
@@ -533,6 +554,94 @@ module cvn1_vault::vault_core {
     public(friend) fun set_vault_compliance(nft_addr: address, compliant: bool) acquires VaultInfo {
         let vault = borrow_global_mut<VaultInfo>(nft_addr);
         vault.last_sale_compliant = compliant;
+    }
+
+    // ============================================
+    // v6: Royalty Escrow + Sweep (friend-only)
+    // ============================================
+
+    /// Store an NFT's royalty escrow reference (called during mint).
+    public(friend) fun store_royalty_escrow_ref(
+        nft_signer: &signer,
+        escrow_addr: address,
+        escrow_extend_ref: ExtendRef,
+        escrow_delete_ref: Option<DeleteRef>,
+    ) {
+        move_to(nft_signer, RoyaltyEscrowRef {
+            escrow_addr,
+            escrow_extend_ref,
+            escrow_delete_ref,
+        });
+    }
+
+    /// Return the royalty escrow address, aborting if missing.
+    public(friend) fun royalty_escrow_address(nft_addr: address): address
+    acquires RoyaltyEscrowRef {
+        assert!(exists<RoyaltyEscrowRef>(nft_addr), err_royalty_escrow_not_found());
+        borrow_global<RoyaltyEscrowRef>(nft_addr).escrow_addr
+    }
+
+    /// Sweep all available royalties from escrow into:
+    /// - creator payout address (config)
+    /// - NFT CORE vault (config)
+    ///
+    /// Returns: (gross_swept, creator_cut, vault_cut, escrow_addr)
+    public(friend) fun sweep_royalty_to_core_vault(
+        nft_addr: address,
+        collection_addr: address,
+        fa_metadata: Object<Metadata>,
+    ): (u64, u64, u64, address)
+    acquires VaultedCollectionConfig, VaultInfo, RoyaltyEscrowRef {
+        if (!exists<RoyaltyEscrowRef>(nft_addr)) {
+            return (0, 0, 0, @0x0)
+        };
+
+        let escrow = borrow_global<RoyaltyEscrowRef>(nft_addr);
+        let escrow_addr = escrow.escrow_addr;
+
+        let amount = primary_fungible_store::balance(escrow_addr, fa_metadata);
+        if (amount == 0) {
+            return (0, 0, 0, escrow_addr)
+        };
+
+        let config = borrow_global<VaultedCollectionConfig>(collection_addr);
+        let creator_bps = config.creator_royalty_bps as u64;
+        let vault_bps = config.vault_royalty_bps as u64;
+        let total_bps = creator_bps + vault_bps;
+        if (total_bps == 0) {
+            // No royalty configuration; nothing to do.
+            return (0, 0, 0, escrow_addr)
+        };
+
+        // Withdraw full balance from escrow
+        let escrow_signer = object::generate_signer_for_extending(&escrow.escrow_extend_ref);
+        let payment = primary_fungible_store::withdraw(&escrow_signer, fa_metadata, amount);
+
+        // Split by absolute royalty bps proportions:
+        // royalty_amount == sale_price * (creator_bps + vault_bps) / 10_000
+        // vault_cut     == sale_price * vault_bps / 10_000
+        // => vault_cut  == royalty_amount * vault_bps / (creator_bps + vault_bps)
+        let vault_cut = if (vault_bps > 0) {
+            math64::mul_div(amount, vault_bps, total_bps)
+        } else {
+            0
+        };
+        let creator_cut = amount - vault_cut;
+
+        // CORE vault gets its cut
+        if (vault_cut > 0) {
+            let vault_payment = fungible_asset::extract(&mut payment, vault_cut);
+            deposit_to_core_vault(nft_addr, fa_metadata, vault_payment);
+        };
+
+        // Creator payout gets the remainder
+        if (fungible_asset::amount(&payment) > 0) {
+            primary_fungible_store::deposit(config.creator_payout_addr, payment);
+        } else {
+            fungible_asset::destroy_zero(payment);
+        };
+
+        (amount, creator_cut, vault_cut, escrow_addr)
     }
 
     /// Move vault out for burn_and_redeem (destructive)

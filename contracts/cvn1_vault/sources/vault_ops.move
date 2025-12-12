@@ -100,6 +100,47 @@ module cvn1_vault::vault_ops {
     }
 
     // ============================================
+    // Entry Functions - Royalty Sweep (v6)
+    // ============================================
+
+    /// Permissionlessly sweep royalties for a vaulted NFT into:
+    /// - creator payout address (collection config)
+    /// - the NFT's CORE vault (collection config)
+    ///
+    /// Royalties must have been paid to the NFT's royalty escrow address.
+    public entry fun sweep_royalty_to_core_vault(
+        caller: &signer,
+        nft_object: Object<Token>,
+        fa_metadata: Object<Metadata>,
+    ) {
+        let nft_addr = object::object_address(&nft_object);
+
+        // If the NFT wasn't minted with a royalty escrow, treat as no-op.
+        if (!vault_core::royalty_escrow_exists(nft_addr)) {
+            return
+        };
+
+        let collection = token::collection_object(nft_object);
+        let collection_addr = object::object_address(&collection);
+
+        let (gross, creator_cut, vault_cut, escrow_addr) =
+            vault_core::sweep_royalty_to_core_vault(nft_addr, collection_addr, fa_metadata);
+
+        if (gross > 0) {
+            let fa_addr = object::object_address(&fa_metadata);
+            vault_events::emit_royalty_swept(
+                nft_addr,
+                fa_addr,
+                gross,
+                creator_cut,
+                vault_cut,
+                escrow_addr,
+                signer::address_of(caller),
+            );
+        };
+    }
+
+    // ============================================
     // Entry Functions - Rewards Claim
     // ============================================
 
