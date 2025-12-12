@@ -5,7 +5,7 @@
 [![Version](https://img.shields.io/badge/Version-6.0.0-green.svg)](CHANGELOG.md)
 [![License](https://img.shields.io/badge/License-Proprietary-red.svg)](LICENSE)
 [![Network](https://img.shields.io/badge/Network-Testnet-yellow.svg)](https://docs.cedra.network)
-[![Tests](https://img.shields.io/badge/Tests-35%20passing-brightgreen.svg)](#testing)
+[![Tests](https://img.shields.io/badge/Tests-41%20passing-brightgreen.svg)](#testing)
 
 ## Overview
 
@@ -43,7 +43,7 @@ cedra move compile --named-addresses cvn1_vault=default
 ### Test
 
 ```bash
-# Contract tests (35 passing)
+# Contract tests (41 passing)
 cedra move test --dev
 ```
 
@@ -64,6 +64,7 @@ cedra move publish --profile cvn1-v3 --named-addresses cvn1_vault=cvn1-v3
 | `deposit_to_core_vault` | Deposit FA to NFT's Core Vault |
 | `deposit_to_rewards_vault` | Deposit FA to NFT's Rewards Vault |
 | `sweep_royalty_to_core_vault` | Split escrowed royalties → creator + Core Vault |
+| `sweep_royalty_to_core_vault_many` | Batch sweep many NFTs |
 | `claim_rewards` | Claim Rewards Vault without burning |
 | `burn_and_redeem` | Burn NFT and claim both vaults |
 

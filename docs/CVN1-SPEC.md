@@ -155,6 +155,13 @@ public entry fun sweep_royalty_to_core_vault(
     fa_metadata: Object<Metadata>,
 )
 
+// Batch sweep royalties for many NFTs in one transaction (v6)
+public entry fun sweep_royalty_to_core_vault_many(
+    caller: &signer,
+    nft_addrs: vector<address>,
+    fa_metadata: Object<Metadata>,
+)
+
 // Claim rewards without burning NFT
 public entry fun claim_rewards(
     owner: &signer,

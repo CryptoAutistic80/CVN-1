@@ -12,6 +12,6 @@ v6 adds automated secondary-sale royalty splitting so the vault portion is depos
 ## New / Updated On-chain Interfaces
 
 - **New keyed resource**: `cvn1_vault::vault_core::RoyaltyEscrowRef` (stored under each NFT object address).
-- **New entry function**: `cvn1_vault::vault_ops::sweep_royalty_to_core_vault`.
+- **New entry functions**: `cvn1_vault::vault_ops::sweep_royalty_to_core_vault`, `cvn1_vault::vault_ops::sweep_royalty_to_core_vault_many`.
 - **New view functions**: `cvn1_vault::vault_views::royalty_escrow_exists`, `cvn1_vault::vault_views::get_royalty_escrow_address`, `cvn1_vault::vault_views::get_royalty_escrow_balance`.
 - **New event**: `cvn1_vault::vault_events::RoyaltySweptToCore`.

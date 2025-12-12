@@ -80,6 +80,10 @@ enum Command {
 
         #[arg(long, default_value_t = 5)]
         interval_secs: u64,
+
+        /// Maximum NFTs to sweep per transaction (uses on-chain batching)
+        #[arg(long, default_value_t = 20)]
+        batch_size: usize,
     },
 }
 
@@ -98,12 +102,9 @@ async fn main() -> Result<()> {
 
     let mut gas_account = LocalAccount::from_private_key(&cli.cedra_private_key, 0)
         .context("parse CEDRA_PRIVATE_KEY")?;
-    let seq = api_client
-        .get_account_sequence_number(gas_account.address())
+    refresh_sequence_number(&api_client, &mut gas_account)
         .await
-        .context("get gas account sequence number")?
-        .into_inner();
-    gas_account.set_sequence_number(seq);
+        .context("get gas account sequence number")?;
 
     let cvn1_address = cli.cvn1_address;
     let timeout_secs = cli.timeout_secs;
@@ -135,6 +136,7 @@ async fn main() -> Result<()> {
             nfts_file,
             fa_metadata,
             interval_secs,
+            batch_size,
         } => {
             let mut nfts = BTreeSet::<AccountAddress>::new();
             for addr in nft {
@@ -150,24 +152,70 @@ async fn main() -> Result<()> {
             }
 
             loop {
+                let mut due = Vec::<(AccountAddress, u64)>::new();
                 for nft_addr in nfts.iter().copied() {
-                    if let Err(err) = sweep_one(
+                    match view_royalty_escrow_balance(
+                        &api_client,
+                        cvn1_address,
+                        nft_addr,
+                        fa_metadata,
+                    )
+                    .await
+                    {
+                        Ok(balance) => {
+                            if balance > 0 {
+                                due.push((nft_addr, balance));
+                            }
+                        },
+                        Err(err) => {
+                            eprintln!("balance check failed for {nft_addr}: {err:#}");
+                        },
+                    }
+                }
+
+                if due.is_empty() {
+                    sleep(Duration::from_secs(interval_secs)).await;
+                    continue;
+                }
+
+                for chunk in due.chunks(std::cmp::max(1, batch_size)) {
+                    let nft_addrs: Vec<AccountAddress> =
+                        chunk.iter().map(|(addr, _)| *addr).collect();
+                    let total_balance: u64 = chunk.iter().map(|(_, bal)| *bal).sum();
+
+                    if let Err(err) = submit_sweep_many_tx(
                         &api_client,
                         chain_id,
                         &mut gas_account,
                         cvn1_address,
-                        nft_addr,
+                        &nft_addrs,
                         fa_metadata,
                         timeout_secs,
                         max_gas_amount,
                         gas_unit_price,
-                        false,
                     )
                     .await
                     {
-                        eprintln!("sweep failed for {nft_addr}: {err:#}");
+                        eprintln!(
+                            "batch sweep failed (nfts={}, total_balance={}): {err:#}",
+                            nft_addrs.len(),
+                            total_balance
+                        );
+
+                        if let Err(refresh_err) =
+                            refresh_sequence_number(&api_client, &mut gas_account).await
+                        {
+                            eprintln!("sequence refresh failed: {refresh_err:#}");
+                        }
+                    } else {
+                        println!(
+                            "batch swept nfts={}, total_balance={}",
+                            nft_addrs.len(),
+                            total_balance
+                        );
                     }
                 }
+
                 sleep(Duration::from_secs(interval_secs)).await;
             }
         },
@@ -205,11 +253,6 @@ async fn sweep_one(
     gas_unit_price: u64,
     force: bool,
 ) -> Result<()> {
-    let escrow_addr = view_royalty_escrow_address(api_client, cvn1_address, nft).await?;
-    if escrow_addr == AccountAddress::ZERO {
-        return Ok(());
-    }
-
     let escrow_balance = view_royalty_escrow_balance(api_client, cvn1_address, nft, fa_metadata)
         .await
         .unwrap_or(0);
@@ -239,29 +282,6 @@ async fn sweep_one(
     Ok(())
 }
 
-async fn view_royalty_escrow_address(
-    api_client: &Client,
-    cvn1_address: AccountAddress,
-    nft: AccountAddress,
-) -> Result<AccountAddress> {
-    let view = ViewFunction {
-        module: ModuleId::new(
-            cvn1_address,
-            Identifier::new("vault_views").expect("valid identifier"),
-        ),
-        function: Identifier::new("get_royalty_escrow_address").expect("valid identifier"),
-        ty_args: vec![],
-        args: vec![bcs::to_bytes(&nft).context("bcs encode nft addr")?],
-    };
-
-    let mut ret = api_client
-        .view_bcs::<Vec<AccountAddress>>(&view, None)
-        .await
-        .context("view get_royalty_escrow_address")?
-        .into_inner();
-    ret.pop().ok_or_else(|| anyhow!("view returned no values"))
-}
-
 async fn view_royalty_escrow_balance(
     api_client: &Client,
     cvn1_address: AccountAddress,
@@ -287,6 +307,16 @@ async fn view_royalty_escrow_balance(
         .context("view get_royalty_escrow_balance")?
         .into_inner();
     ret.pop().ok_or_else(|| anyhow!("view returned no values"))
+}
+
+async fn refresh_sequence_number(api_client: &Client, gas_account: &mut LocalAccount) -> Result<()> {
+    let seq = api_client
+        .get_account_sequence_number(gas_account.address())
+        .await
+        .context("get account sequence number")?
+        .into_inner();
+    gas_account.set_sequence_number(seq);
+    Ok(())
 }
 
 async fn submit_sweep_tx(
@@ -332,10 +362,62 @@ async fn submit_sweep_tx(
     .gas_unit_price(gas_unit_price);
 
     let signed_txn = gas_account.sign_with_transaction_builder(builder);
-    api_client
-        .submit_and_wait(&signed_txn)
-        .await
-        .context("submit sweep tx")?;
+    if let Err(err) = api_client.submit_and_wait(&signed_txn).await {
+        let _ = refresh_sequence_number(api_client, gas_account).await;
+        return Err(err).context("submit sweep tx");
+    }
+
+    gas_account.increment_sequence_number();
+    Ok(())
+}
+
+async fn submit_sweep_many_tx(
+    api_client: &Client,
+    chain_id: u8,
+    gas_account: &mut LocalAccount,
+    cvn1_address: AccountAddress,
+    nfts: &[AccountAddress],
+    fa_metadata: AccountAddress,
+    timeout_secs: u64,
+    max_gas_amount: u64,
+    gas_unit_price: u64,
+) -> Result<()> {
+    let payload = TransactionPayload::EntryFunction(EntryFunction::new(
+        ModuleId::new(
+            cvn1_address,
+            Identifier::new("vault_ops").expect("valid identifier"),
+        ),
+        Identifier::new("sweep_royalty_to_core_vault_many").expect("valid identifier"),
+        vec![],
+        vec![
+            bcs::to_bytes(&nfts).context("bcs encode nft addresses")?,
+            bcs::to_bytes(&fa_metadata).context("bcs encode fa_metadata object addr")?,
+        ],
+    ));
+
+    let expiration_timestamp_secs =
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .context("read current time")?
+            .as_secs()
+            + timeout_secs;
+
+    let builder = TransactionBuilder::new(
+        payload,
+        expiration_timestamp_secs,
+        ChainId::new(chain_id),
+        gas_fee_type_tag(),
+    )
+    .sender(gas_account.address())
+    .sequence_number(gas_account.sequence_number())
+    .max_gas_amount(max_gas_amount)
+    .gas_unit_price(gas_unit_price);
+
+    let signed_txn = gas_account.sign_with_transaction_builder(builder);
+    if let Err(err) = api_client.submit_and_wait(&signed_txn).await {
+        let _ = refresh_sequence_number(api_client, gas_account).await;
+        return Err(err).context("submit batch sweep tx");
+    }
 
     gas_account.increment_sequence_number();
     Ok(())

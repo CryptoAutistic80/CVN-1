@@ -140,6 +140,25 @@ module cvn1_vault::vault_ops {
         };
     }
 
+    /// Batch sweep royalties for multiple vaulted NFTs (v6).
+    ///
+    /// This is equivalent to calling `sweep_royalty_to_core_vault` once per NFT address,
+    /// but can reduce per-sweep overhead by batching into a single transaction.
+    public entry fun sweep_royalty_to_core_vault_many(
+        caller: &signer,
+        nft_addrs: vector<address>,
+        fa_metadata: Object<Metadata>,
+    ) {
+        let i = 0;
+        let len = vector::length(&nft_addrs);
+        while (i < len) {
+            let nft_addr = *vector::borrow(&nft_addrs, i);
+            let nft_object = object::address_to_object<Token>(nft_addr);
+            sweep_royalty_to_core_vault(caller, nft_object, fa_metadata);
+            i = i + 1;
+        };
+    }
+
     // ============================================
     // Entry Functions - Rewards Claim
     // ============================================

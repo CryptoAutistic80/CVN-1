@@ -4,7 +4,7 @@ Permissionlessly sweeps royalties from each NFT’s on-chain royalty escrow into
 - creator payout address
 - the NFT’s **Core Vault**
 
-This calls `::vault_ops::sweep_royalty_to_core_vault` for configured NFTs and fungible-asset metadata addresses.
+This calls `::vault_ops::sweep_royalty_to_core_vault` (or the batch variant `::vault_ops::sweep_royalty_to_core_vault_many`) for configured NFTs and fungible-asset metadata addresses.
 
 ## Prereqs
 
@@ -35,8 +35,8 @@ cargo run --release --manifest-path royalty_sweeper/Cargo.toml -- \
   watch \
   --nft 0x... \
   --fa-metadata 0x... \
-  --interval-secs 5
+  --interval-secs 5 \
+  --batch-size 20
 ```
 
 You can also provide `--nfts-file path.txt` (one address per line, `#` comments allowed).
-
