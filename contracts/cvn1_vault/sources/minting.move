@@ -43,8 +43,8 @@ module cvn1_vault::minting {
         
         // Get all config values at once
         let (
-            _creator_royalty_bps,
-            _vault_royalty_bps,
+            creator_royalty_bps,
+            vault_royalty_bps,
             mint_vault_bps,
             mint_price,
             mint_price_fa_addr,
@@ -56,22 +56,42 @@ module cvn1_vault::minting {
         let collection_obj = object::address_to_object<Collection>(collection_addr);
         let collection_name = collection::name(collection_obj);
         
-        // Create the NFT (v5: inherit royalty from collection)
+        // Create the NFT (token-level royalty is set post-mint)
         let constructor_ref = token::create_named_token(
             creator,
             collection_name,
             description,
             name,
-            royalty::get(collection_obj),
+            option::none(),
             uri,
         );
         
         let token_signer = object::generate_signer(&constructor_ref);
         let nft_addr = object::address_from_constructor_ref(&constructor_ref);
+
+        // Create royalty escrow + set token-level royalty payee to escrow (v6)
+        let total_royalty_bps = (creator_royalty_bps as u64) + (vault_royalty_bps as u64);
+        if (total_royalty_bps > 0) {
+            let escrow_ref = object::create_object(nft_addr);
+            let escrow_addr = object::address_from_constructor_ref(&escrow_ref);
+            let escrow_extend_ref = object::generate_extend_ref(&escrow_ref);
+            let escrow_delete_ref = object::generate_delete_ref(&escrow_ref);
+            vault_core::store_royalty_escrow_ref(
+                &token_signer,
+                escrow_addr,
+                escrow_extend_ref,
+                option::some(escrow_delete_ref),
+            );
+
+            let royalty_mutator_ref = royalty::generate_mutator_ref(object::generate_extend_ref(&constructor_ref));
+            royalty::update(
+                &royalty_mutator_ref,
+                royalty::create(total_royalty_bps, 10000, escrow_addr),
+            );
+        };
         
         // Create refs for vault lifecycle management
         let extend_ref = object::generate_extend_ref(&constructor_ref);
-        let delete_ref = object::generate_delete_ref(&constructor_ref);
         let burn_ref = token::generate_burn_ref(&constructor_ref);
         
         // Create and store VaultInfo
@@ -79,7 +99,7 @@ module cvn1_vault::minting {
             &token_signer,
             is_redeemable,
             extend_ref,
-            option::some(delete_ref),
+            option::none(),
             burn_ref,
             creator_addr,
         );
@@ -133,23 +153,55 @@ module cvn1_vault::minting {
         let creator_addr = signer::address_of(creator);
         
         assert!(vault_core::config_exists(collection_addr), vault_core::err_config_not_found());
+
+        // Get royalty config (v6)
+        let (
+            creator_royalty_bps,
+            vault_royalty_bps,
+            _mint_vault_bps,
+            _mint_price,
+            _mint_price_fa_addr,
+            _allowed_assets,
+            _creator_payout,
+        ) = vault_core::get_config_values(collection_addr);
         
         // Get collection info
         let collection_obj = object::address_to_object<Collection>(collection_addr);
         let collection_name = collection::name(collection_obj);
         
-        // Create the NFT (v5: inherit royalty from collection)
+        // Create the NFT (token-level royalty is set post-mint)
         let constructor_ref = token::create_named_token(
             creator,
             collection_name,
             description,
             name,
-            royalty::get(collection_obj),
+            option::none(),
             uri,
         );
         
         let token_signer = object::generate_signer(&constructor_ref);
         let nft_addr = object::address_from_constructor_ref(&constructor_ref);
+
+        // Create royalty escrow + set token-level royalty payee to escrow (v6)
+        let total_royalty_bps = (creator_royalty_bps as u64) + (vault_royalty_bps as u64);
+        if (total_royalty_bps > 0) {
+            let escrow_ref = object::create_object(nft_addr);
+            let escrow_addr = object::address_from_constructor_ref(&escrow_ref);
+            let escrow_extend_ref = object::generate_extend_ref(&escrow_ref);
+            let escrow_delete_ref = object::generate_delete_ref(&escrow_ref);
+            vault_core::store_royalty_escrow_ref(
+                &token_signer,
+                escrow_addr,
+                escrow_extend_ref,
+                option::some(escrow_delete_ref),
+            );
+
+            let royalty_mutator_ref = royalty::generate_mutator_ref(object::generate_extend_ref(&constructor_ref));
+            royalty::update(
+                &royalty_mutator_ref,
+                royalty::create(total_royalty_bps, 10000, escrow_addr),
+            );
+        };
         
         // Create refs for vault lifecycle management
         let extend_ref = object::generate_extend_ref(&constructor_ref);
@@ -191,8 +243,8 @@ module cvn1_vault::minting {
         
         // Get all config values at once
         let (
-            _creator_royalty_bps,
-            _vault_royalty_bps,
+            creator_royalty_bps,
+            vault_royalty_bps,
             mint_vault_bps,
             mint_price,
             mint_price_fa_addr,
@@ -220,18 +272,39 @@ module cvn1_vault::minting {
         
         // Use create_token_as_collection_owner - validates owner(collection) == signer
         // Since we transferred collection ownership to itself, collection_signer is the owner
-        // v5: inherit royalty from collection for marketplace discovery
+        // v6: token royalty is set post-mint to route to escrow
         let constructor_ref = token::create_token_as_collection_owner(
             &collection_signer,
             collection_obj,  // Pass Object<Collection> directly
             description,
             token_name,
-            royalty::get(collection_obj),
+            option::none(),
             uri,
         );
         
         let token_signer = object::generate_signer(&constructor_ref);
         let nft_addr = object::address_from_constructor_ref(&constructor_ref);
+
+        // Create royalty escrow + set token-level royalty payee to escrow (v6)
+        let total_royalty_bps = (creator_royalty_bps as u64) + (vault_royalty_bps as u64);
+        if (total_royalty_bps > 0) {
+            let escrow_ref = object::create_object(nft_addr);
+            let escrow_addr = object::address_from_constructor_ref(&escrow_ref);
+            let escrow_extend_ref = object::generate_extend_ref(&escrow_ref);
+            let escrow_delete_ref = object::generate_delete_ref(&escrow_ref);
+            vault_core::store_royalty_escrow_ref(
+                &token_signer,
+                escrow_addr,
+                escrow_extend_ref,
+                option::some(escrow_delete_ref),
+            );
+
+            let royalty_mutator_ref = royalty::generate_mutator_ref(object::generate_extend_ref(&constructor_ref));
+            royalty::update(
+                &royalty_mutator_ref,
+                royalty::create(total_royalty_bps, 10000, escrow_addr),
+            );
+        };
         
         // Create refs for vault lifecycle management
         let extend_ref = object::generate_extend_ref(&constructor_ref);

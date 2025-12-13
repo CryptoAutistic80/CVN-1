@@ -5,6 +5,8 @@ module cvn1_vault::vault_views {
     use std::string::String;
     
     use cedra_framework::object::Object;
+    use cedra_framework::fungible_asset::Metadata;
+    use cedra_framework::primary_fungible_store;
     use cedra_token_objects::token::{Self, Token};
     
     use cvn1_vault::vault_core::{Self, VaultBalance};
@@ -46,6 +48,35 @@ module cvn1_vault::vault_views {
     /// Check if a vault exists for an NFT
     public fun vault_exists(nft_addr: address): bool {
         vault_core::vault_exists(nft_addr)
+    }
+
+    #[view]
+    /// Check if a royalty escrow exists for an NFT (v6)
+    public fun royalty_escrow_exists(nft_addr: address): bool {
+        vault_core::royalty_escrow_exists(nft_addr)
+    }
+
+    #[view]
+    /// Get the royalty escrow address for an NFT (v6)
+    /// Returns @0x0 if not configured.
+    public fun get_royalty_escrow_address(nft_addr: address): address {
+        if (!vault_core::royalty_escrow_exists(nft_addr)) {
+            return @0x0
+        };
+        vault_core::royalty_escrow_address(nft_addr)
+    }
+
+    #[view]
+    /// Get the royalty escrow balance for an NFT in a given FA (v6)
+    public fun get_royalty_escrow_balance(
+        nft_addr: address,
+        fa_metadata: Object<Metadata>,
+    ): u64 {
+        if (!vault_core::royalty_escrow_exists(nft_addr)) {
+            return 0
+        };
+        let escrow_addr = vault_core::royalty_escrow_address(nft_addr);
+        primary_fungible_store::balance(escrow_addr, fa_metadata)
     }
 
     #[view]
@@ -127,4 +158,3 @@ module cvn1_vault::vault_views {
         vault_core::can_mint(collection_addr)
     }
 }
-

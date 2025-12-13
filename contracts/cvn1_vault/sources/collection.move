@@ -55,8 +55,10 @@ module cvn1_vault::collection {
             vault_core::err_invalid_royalty_bps()
         );
         
-        // Create framework royalty for marketplace discovery (v5)
-        // Only creator_royalty_bps is used - vault receives value from other sources
+        // Create collection-level framework royalty for marketplace discovery.
+        // NOTE: CVN-1 v6 uses token-level royalties (set at mint) to route the full
+        // (creator + core vault) royalty into a per-NFT escrow. Collection-level royalty
+        // remains creator-only as a fallback for non-token-aware indexers/marketplaces.
         let royalty_opt = if (creator_royalty_bps > 0) {
             option::some(royalty::create(
                 (creator_royalty_bps as u64),
